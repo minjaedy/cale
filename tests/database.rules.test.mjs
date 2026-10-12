@@ -12,6 +12,15 @@ const root='tempo/users/alice';
 const event={day:0,title:'근력',start:'19:30',end:'20:30',cat:'str',note:''};
 const record={items:{diet:true,run:false},weight:89.5,lunch:'밥과 닭가슴살',updatedAt:Date.now()};
 
+test('legacy users path keeps its existing owner-only access',async()=>{
+  const path='users/alice/existing';
+  await assertSucceeds(owner().ref(path).set({value:'legacy'}));
+  await assertSucceeds(owner().ref(path).once('value'));
+  await assertFails(other().ref(path).once('value'));
+  await assertFails(other().ref(path).set({value:'other'}));
+  await assertFails(env.unauthenticatedContext().database().ref(path).once('value'));
+});
+
 test('owner can create and read a routine and a dated record',async()=>{
   const db=owner();await assertSucceeds(db.ref(root+'/events/d0').set(event));
   await assertSucceeds(db.ref(root+'/days/2026-10-12').set(record));

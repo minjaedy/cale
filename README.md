@@ -2,13 +2,20 @@
 
 아이폰 중심으로 다듬은 다크 루틴 캘린더입니다. 기존 일정과 식단 목표를 유지하고 하루/주간 보기, 완료 체크, 몸무게·식사 기록, Google 로그인, Firebase Realtime Database 동기화를 제공합니다.
 
-## 준비된 상태
+## 배포된 상태
+
+- **사용 주소: [TEMPO 열기](https://cale-b2c40.firebaseapp.com/)**
+- Firebase Hosting: https://cale-b2c40.web.app/
+- GitHub Pages: https://minjaedy.github.io/cale/
+- 소스 저장소: https://github.com/minjaedy/cale
+- 2026-10-12 Google 로그인 활성화, 위 사이트의 인증 도메인 등록, Realtime Database 규칙 게시를 완료했습니다. 서버 설정을 다시 읽어 일치 여부를 확인했습니다.
 
 - `cale-b2c40` 프로젝트의 웹 앱 설정이 `firebase-config.js`에 입력되어 있습니다.
 - 데이터 경로는 `/tempo/users/{Firebase UID}/events`, `/days`, `/meta`입니다.
 - `database.rules.json`은 **만료일 없는 규칙**입니다. 로그인한 사용자는 자기 경로만 읽고 쓸 수 있습니다. 익명 로그인은 허용하지 않습니다.
 - 날짜별 기록 자체를 삭제하는 요청은 거절합니다. 몸무게/메뉴 개별 수정·비우기와 일정 삭제는 가능합니다.
-- 코드/규칙 작성과 로컬 테스트가 완료되었습니다. 실제 서버의 Google 로그인 설정, 규칙 게시, 사이트 배포는 아래 절차로 진행해야 합니다.
+- 기존 `/users/{uid}` 규칙은 그대로 보존했습니다. TEMPO의 강화된 검증·삭제 보호는 `/tempo/users/{uid}`에 적용됩니다.
+- 동기화 로직 테스트 5개와 보안 규칙 테스트 10개가 통과했습니다. 아래 절차는 이후 재설정·재배포용입니다.
 
 ## 1. Google 로그인 켜기
 
@@ -16,17 +23,17 @@
 2. **Authentication → Sign-in method → Google**을 활성화합니다. 프로젝트 지원 이메일을 선택하고 저장합니다.
 3. **Authentication → Settings → Authorized domains**에 배포할 사이트의 호스트를 추가합니다.
    - Firebase Hosting: `cale-b2c40.web.app`, `cale-b2c40.firebaseapp.com`
-   - GitHub Pages: `minjaedy.github.io` (다른 계정이라면 해당 계정으로 변경)
+   - GitHub Pages: `minjaedy.github.io`
    - 로컬 테스트: `localhost`, `127.0.0.1`
 4. 호스트만 입력합니다. `https://`나 `/tempo/` 같은 경로는 넣지 않습니다.
 
-Safari의 교차 사이트 저장소 제약을 피하도록 Google 로그인 팝업 방식을 사용합니다. 로그인 버튼을 직접 누르고, 차단 안내가 나오면 해당 사이트의 팝업을 허용합니다. 리디렉션 방식으로 임의 변경하면 별도의 authDomain/프록시 설정이 필요할 수 있습니다.
+기본 사용 주소(`cale-b2c40.firebaseapp.com`)에서는 같은 도메인의 인증 처리 화면을 사용하는 리디렉션 방식으로 로그인합니다. Safari의 교차 사이트 저장소 제약을 피하면서 팝업 없이 로그인할 수 있습니다. GitHub Pages와 `web.app` 주소에서는 팝업 방식을 사용하므로 로그인 버튼을 직접 누르고, 차단 안내가 나오면 해당 사이트의 팝업을 허용합니다.
 
 ## 2. Realtime Database 규칙 게시
 
 Firebase Console → **Realtime Database → Rules**에서 `database.rules.json`의 전체 내용을 붙여넣고 **Publish**를 누릅니다. Firestore 규칙 창이 아닙니다.
 
-이 파일은 해당 DB의 전체 규칙입니다. 같은 데이터베이스를 다른 앱에서도 사용한다면 그 앱의 규칙을 보존한 채 `tempo` 경로를 병합하세요. TEMPO는 다른 경로의 데이터를 읽거나 수정하지 않습니다.
+이 파일은 기존 `/users/{uid}` 규칙을 보존한 해당 DB의 전체 규칙입니다. 다른 앱의 규칙이 추가된다면 함께 병합하세요. TEMPO는 다른 경로의 데이터를 읽거나 수정하지 않습니다.
 
 또는 터미널에서:
 
@@ -40,7 +47,7 @@ npm run deploy:rules
 
 ## 3. 웹사이트 배포
 
-### Firebase Hosting — GitHub는 소스 보관용
+### Firebase Hosting
 
 GitHub 저장소는 비공개로 두어도 됩니다. 프로젝트 폴더에서:
 
@@ -50,7 +57,7 @@ npx firebase login
 npm run deploy
 ```
 
-성공하면 CLI가 실제 배포 주소를 표시합니다. `firebase.json`과 `.firebaserc`는 이미 `cale-b2c40`에 맞춰져 있습니다. 첫 배포 전 Firebase Console에서 Hosting을 시작해야 할 수 있습니다.
+`firebase.json`과 `.firebaserc`는 `cale-b2c40`에 맞춰져 있습니다. 명령은 화면·Google 로그인 제공자·데이터베이스 규칙을 재배포합니다. 새 사이트 주소를 추가하면 Authentication의 허용 도메인도 별도로 등록해야 합니다.
 
 ### GitHub Pages
 
@@ -63,7 +70,7 @@ npm run deploy
 
 ## 아이폰에서 사용하기
 
-배포된 주소를 **Safari**에서 열고 **공유 → 홈 화면에 추가**를 선택하면 편하게 접근할 수 있습니다. HTML 파일 미리보기 대신 HTTPS 사이트 주소를 사용해야 Google 로그인이 동작합니다. 앱의 **기록 → Google로 로그인**을 눌러 PC와 같은 계정으로 로그인하세요.
+위 **사용 주소**를 **Safari**에서 열고 **공유 → 홈 화면에 추가**를 선택하면 TEMPO 아이콘으로 접근할 수 있습니다. HTML 파일 미리보기 대신 HTTPS 사이트 주소를 사용해야 Google 로그인이 동작합니다. 앱의 **기록 → Google로 로그인**을 눌러 PC와 같은 계정으로 로그인하세요. 여러 주소를 번갈아 쓰지 말고 하나를 정해 사용하세요. 로그인 전 기기 기록은 사이트 주소마다 별도로 저장됩니다.
 
 - 320px부터 넓은 화면까지 반응형으로 구성했습니다.
 - 홈 인디케이터 안전 여백, 16px 입력 글꼴, 키보드 높이 변화에 대응하는 바텀 시트를 사용합니다.
@@ -94,7 +101,7 @@ npm run build
 ```
 
 - `npm test`: 필드 병합, 오프라인 대기열, 진행 중인 쓰기와 새 수정의 충돌, 일정 차이 계산 등을 검사합니다.
-- `npm run test:rules`: `demo-tempo` 에뮬레이터에서 9가지 접근/유효성/삭제 보호 시나리오를 검사합니다. 운영 DB에는 테스트 데이터를 쓰지 않습니다.
+- `npm run test:rules`: `demo-tempo` 에뮬레이터에서 10가지 접근/유효성/삭제 보호·기존 규칙 보존 시나리오를 검사합니다. 운영 DB에는 테스트 데이터를 쓰지 않습니다.
 - Firebase 웹 설정은 공개 클라이언트 설정입니다. 서비스 계정 비밀키나 Admin SDK 인증 JSON은 저장소에 넣지 마세요.
 - 기본 개인정보 접근 제한은 데이터 경로의 UID와 Firebase 인증 토큰으로 강제됩니다. 이 규칙은 여러 사용자가 각자 자기 기록을 저장하는 구조이며, 한 사람만 가입 가능한 허용 목록 방식은 아닙니다.
 

@@ -1,5 +1,5 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import { getDatabase, ref, onValue, update, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 import { clone, applyPatch, cleanEvent, eventDiff, mergeOutbox, acknowledge, queuedPatch } from './sync-core.mjs';
 
@@ -7,6 +7,7 @@ const ui=window.Tempo, config=window.TEMPO_FIREBASE_CONFIG;
 const app=initializeApp(config), auth=getAuth(app), db=getDatabase(app), provider=new GoogleAuthProvider();
 provider.setCustomParameters({prompt:'select_account'});
 let user=null, connected=false, unsubscribe=null, queue={}, busy=false, ready=false, revision=0, generation=0, lastEvents=[], currentData={};
+let signingIn=false;
 let state={status:'signed-out',user:null,message:'Google 계정으로 로그인하면 아이폰과 PC의 기록이 이어져요.'};
 const queueKey=uid=>'tempo-outbox-v1:'+uid;
 const friendlyError=error=>({
@@ -41,7 +42,7 @@ onAuthStateChanged(auth,next=>{
 });
 window.TempoCloud={
   get state(){return state;},
-  async login(){if(location.protocol==='file:'){ui.notify('동기화는 배포한 웹사이트에서 사용할 수 있어요.');return;}try{await signInWithPopup(auth,provider);}catch(error){if(!['auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(error.code)){publish(friendlyError(error),'error');ui.notify(friendlyError(error));}}},
+  async login(){if(location.protocol==='file:'){ui.notify('동기화는 배포한 웹사이트에서 사용할 수 있어요.');return;}if(signingIn)return;signingIn=true;try{if(location.hostname===config.authDomain){publish('Google 로그인 화면으로 이동하고 있어요.','signing-in');await signInWithRedirect(auth,provider);}else{const pending=signInWithPopup(auth,provider);publish('Google 로그인 창에서 계정을 선택해 주세요.','signing-in');await pending;}}catch(error){if(!['auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(error.code)){publish(friendlyError(error),'error');ui.notify(friendlyError(error));}else publish();}finally{signingIn=false;}},
   async logout(){if(Object.keys(queue).length){ui.notify('아직 동기화되지 않은 기록이 있어요. 연결 후 다시 시도해 주세요.');return;}await signOut(auth);},
   retry(){if(user&&!ready){ui.notify('페이지를 새로고침한 뒤 다시 연결해 주세요.');return;}flush();},
   eventsChanged(next){if(!user)return;const patch=eventDiff(lastEvents,next);lastEvents=clone(next);enqueue(patch);},
@@ -49,3 +50,4 @@ window.TempoCloud={
   importLocal(){if(!user||!ready){ui.notify('계정의 기록을 먼저 불러와 주세요.');return;}const local=ui.guestSnapshot(),patch={};const present=applyPatch(currentData,queuedPatch(queue));for(const [ds,lg] of Object.entries(local.logs)){for(const k of ['weight','breakfast','lunch','snack','dinner'])if(lg[k]!==undefined&&lg[k]!==null&&present.days?.[ds]?.[k]===undefined)patch['days/'+ds+'/'+k]=lg[k];for(const [k,v] of Object.entries(lg.items||{}))if(present.days?.[ds]?.items?.[k]===undefined)patch['days/'+ds+'/items/'+k]=!!v;if(Object.keys(patch).some(p=>p.startsWith('days/'+ds+'/')))patch['days/'+ds+'/updatedAt']=serverTimestamp();}for(const e of local.events)if(!present.events?.[e.id])patch['events/'+e.id]=cleanEvent(e);enqueue(patch);receive(currentData);ui.notify(Object.keys(patch).length?'기존 기록에서 비어 있는 항목을 가져왔어요.':'추가로 가져올 기록이 없어요.');}
 };
 publish();
+getRedirectResult(auth).catch(error=>{publish(friendlyError(error),'error');ui.notify(friendlyError(error));});
