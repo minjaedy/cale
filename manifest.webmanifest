@@ -1,24 +1,26 @@
 {
-  "name": "TEMPO · 나만의 루틴",
+  "name": "TEMPO · Own your pace",
   "short_name": "TEMPO",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#111815",
-  "theme_color": "#111815",
+  "background_color": "#0b0c0f",
+  "theme_color": "#0b0c0f",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "icon-192.png?v=2",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-512.png",
+      "src": "icon-512.png?v=2",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "id": "./",
+  "description": "나만의 페이스를 만드는 루틴과 트레이닝 기록"
 }

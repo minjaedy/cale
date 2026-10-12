@@ -1,11 +1,15 @@
 import {readFile,writeFile} from 'node:fs/promises';
 let html=await readFile('index.html','utf8');
+html=html.replace('<link rel="stylesheet" href="./styles.css?v=2">','<style>\n'+await readFile('styles.css','utf8')+'\n</style>');
+const iconData='data:image/svg+xml,'+encodeURIComponent(await readFile('icon.svg','utf8'));
+html=html.replaceAll('./icon.svg?v=2',iconData).replace('<link rel="manifest" href="./manifest.webmanifest?v=2">','');
+html=html.replace('./icon-180.png?v=2','data:image/png;base64,'+(await readFile('icon-180.png')).toString('base64'));
 const config=await readFile('firebase-config.js','utf8');
 const core=(await readFile('sync-core.mjs','utf8')).replace(/^export /gm,'');
 let cloud=await readFile('firebase-sync.js','utf8');
 cloud=cloud.replace(/^import \{[^\n]+\} from '\.\/sync-core.mjs';\r?\n/m,'');
 cloud=cloud.replace(/^import (\{[^\n]+\}) from ('https:[^']+');$/gm,'const $1 = await import($2);');
 html=html.replace('<script src="./firebase-config.js"></script>','<script>\n'+config+'\n</script>');
-html=html.replace("import('./firebase-sync.js')","(async()=>{\n"+core+'\n'+cloud+'\n})()');
+html=html.replace("import('./firebase-sync.js?v=2')","(async()=>{\n"+core+'\n'+cloud+'\n})()');
 await writeFile('dist/TEMPO.html',html);
 console.log('Standalone HTML ready: dist/TEMPO.html');

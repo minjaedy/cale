@@ -10,7 +10,9 @@
     "test": "node --test tests/sync-core.test.mjs",
     "test:rules": "firebase emulators:exec --project demo-tempo --only database \"node --test tests/database.rules.test.mjs\"",
     "deploy:rules": "firebase deploy --only database --project cale-b2c40",
-    "deploy": "npm run build && firebase deploy --only hosting,database,auth --project cale-b2c40"
+    "deploy:web": "gh workflow run pages.yml --repo minjaedy/cale --ref main",
+    "deploy:backend": "firebase deploy --only database,auth --project cale-b2c40",
+    "deploy": "npm run deploy:backend && npm run deploy:web"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.2",

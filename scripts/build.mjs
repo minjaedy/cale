@@ -1,6 +1,6 @@
 import {mkdir,copyFile,writeFile,readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-const files=['index.html','firebase-config.js','firebase-sync.js','sync-core.mjs','manifest.webmanifest','icon-180.png','icon-192.png','icon-512.png'];
+const files=['index.html','styles.css','firebase-config.js','firebase-sync.js','sync-core.mjs','manifest.webmanifest','icon.svg','icon-180.png','icon-192.png','icon-512.png','icon-1024.png','sw.js','offline.html'];
 const html=await readFile('index.html','utf8');
 for(const [,script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(script);
 JSON.parse(await readFile('database.rules.json','utf8'));

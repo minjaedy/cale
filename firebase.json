@@ -9,7 +9,11 @@
   },
   "database": { "rules": "database.rules.json" },
   "hosting": {
-    "public": "dist",
+    "public": "firebase-redirect",
+    "redirects": [
+      {"source":"/","destination":"https://minjaedy.github.io/cale/","type":302},
+      {"source":"/index.html","destination":"https://minjaedy.github.io/cale/","type":302}
+    ],
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "headers": [{"source":"**","headers":[{"key":"X-Content-Type-Options","value":"nosniff"},{"key":"Referrer-Policy","value":"strict-origin-when-cross-origin"},{"key":"X-Frame-Options","value":"SAMEORIGIN"}]}]
   },
