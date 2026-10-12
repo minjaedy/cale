@@ -67,7 +67,7 @@ async function flush(){
   }}finally{flush.running=false;}
 }
 async function queue(data){
-  requireUser();if(data.date<cutoffs().before)throw Error('30일이 지난 기록은 등록할 수 없어요.');if(pending.length>=30)throw Error('전송 대기 30개를 먼저 정리해 주세요.');
+  requireUser();if(data.date<cutoffs().before)throw Error('1년이 지난 기록은 등록할 수 없어요.');if(pending.length>=30)throw Error('전송 대기 30개를 먼저 정리해 주세요.');
   if(data.kind==='comment'&&!links[data.member])throw Error('회원 연결을 먼저 확인해 주세요.');
   const item={...data,id:crypto.randomUUID()};pending.push(item);
   if(!localSet(outboxKey(),pending)){pending.pop();throw Error('기기에 임시 보관하지 못했어요. 저장 공간을 확인해 주세요.');}
@@ -110,8 +110,9 @@ export async function start(context){
     connect:code=>action(async()=>{requireOnline();code=code.trim().toLowerCase();if(!/^[a-f0-9]{32}$/.test(code))throw Error('초대 코드 32자리를 확인해 주세요.');const uid=user.uid,inv=ref(db,'tempo/coaching/invites/'+code);const claimed=await runTransaction(inv,value=>{if(!value||value.member===uid||value.expiresAt<Date.now()+offset||value.claimedBy&&value.claimedBy!==uid)return;return {...value,claimedBy:uid}},{applyLocally:false});if(!claimed.committed)throw Error('이미 사용했거나 만료된 초대 코드예요.');const v=claimed.snapshot.val();const path='tempo/coaching/links/'+v.member+'/'+uid;if(!(await get(ref(db,path))).exists())await set(ref(db,path),{code,memberName:v.name,trainerName:name(),createdAt:serverTimestamp()});await set(ref(db,'tempo/coaching/roster/'+uid+'/'+v.member),true);await set(inv,null);document.getElementById('inviteInput').value='';ui.status('회원 연결 완료');}),
     revoke:id=>action(async()=>{requireOnline();if(!confirm('연결을 해제할까요? 트레이너는 더 이상 이 회원의 식단을 볼 수 없어요. 기존 코멘트는 남아요.'))return;const member=role==='trainer'?id:user.uid,trainer=role==='trainer'?user.uid:id,code=links[id]?.code;const patch={['tempo/coaching/links/'+member+'/'+trainer]:null,['tempo/coaching/roster/'+trainer+'/'+member]:null};if(code&&(await get(ref(db,'tempo/coaching/invites/'+code))).exists())patch['tempo/coaching/invites/'+code]=null;await update(ref(db),patch);}),
     meal:data=>action(()=>queue({...data,kind:'meal',member:user?.uid})),comment:data=>action(()=>queue({...data,kind:'comment'})),
+    deleteMeal:id=>action(async()=>{requireOnline();if(!confirm('식단을 삭제할까요?\n코멘트와 이모티콘도 함께 삭제됩니다.'))return;const result=await api('/meal/remove',{id});for(const key of result.removed||[])delete feeds[user.uid]?.[key];publish();window.Tempo.notify('식단 삭제 완료');}),
     read:ids=>action(async()=>{requireUser();const patch=Object.fromEntries(ids.map(id=>['tempo/coaching/seen/'+user.uid+'/'+id,Date.now()+offset]));if(ids.length)await update(ref(db),patch);}),
-    more:()=>{limit+=100;connectListeners();document.getElementById('feedLimit').textContent='최근 '+limit+'개 · 30일 보관';},
+    more:()=>{limit+=100;connectListeners();document.getElementById('feedLimit').textContent='최근 '+limit+'개 · 1년 보관';},
     retry:id=>{pending=pending.map(p=>p.id===id?{...p,error:null}:p);localSet(outboxKey(),pending);publish();void flush();},
     discard:id=>{if(!confirm('아직 전송되지 않은 등록을 취소할까요?'))return;pending=pending.filter(p=>p.id!==id);localSet(outboxKey(),pending);publish();},
     enablePush:()=>{if(!user){ui.status('먼저 로그인해 주세요.');return;}if(!('Notification'in window)){ui.status('아이폰은 홈 화면에 추가한 앱에서 알림을 켜 주세요.');return;}const permission=Notification.requestPermission();void action(()=>enablePush(permission));},

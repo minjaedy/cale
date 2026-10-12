@@ -15,7 +15,7 @@ export function initAccount(save){
       for(const key of Object.keys(NUMBER_FIELDS))data[key]=$('profile-'+key).value;data.nutritionMode=$('profileMode').value;if($('profileSex').value)data.formulaSex=$('profileSex').value;data.activity=$('profileActivity').value;
     }
     setAccountBusy(true);$('accountError').textContent='';
-    try{const ok=await saveAction?.(data,role,first);if(ok!==false)closeAccount(true)}catch(e){$('accountError').textContent=e.message||'저장 실패'}finally{setAccountBusy(false)}
+    try{const ok=await saveAction?.(data,role,first);if(ok!==false){closeAccount(true);if(first&&role==='member')window.Tempo.showPlan()}}catch(e){$('accountError').textContent=e.message||'저장 실패'}finally{setAccountBusy(false)}
   };
   panel.addEventListener('keydown',ev=>{
     if(ev.key==='Escape'){ev.preventDefault();closeAccount();}

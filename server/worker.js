@@ -1,5 +1,6 @@
 import {registerAccount,maintenanceTick,cleanupInvites} from './retention.js';
 import {cutoffs} from '../retention-core.mjs';
+import {removeMeal} from './meals.js';
 import {identity,database} from './firebase.js';
 import {authAction,sql,problem} from './auth.js';
 import {hash,subscribe,queuePush,deliver,cleanup} from './push.js';
@@ -10,7 +11,7 @@ const dayOK=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFini
 export function messageInput(b,person){
   if(!idOK(b.id)||!idOK(b.member)||!['meal','comment'].includes(b.kind)||!dayOK(b.date)||typeof b.text!=='string'||!b.text.trim()||b.text.length>(b.kind==='meal'?300:600))throw problem('내용과 날짜를 확인해 주세요.');
   if(b.date>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()))throw problem('미래 날짜에는 등록할 수 없어요.');
-  if(b.date<cutoffs().before)throw problem('30일이 지난 기록은 등록할 수 없어요.');
+  if(b.date<cutoffs().before)throw problem('1년이 지난 기록은 등록할 수 없어요.');
   if(b.kind==='meal'&&(b.member!==person.sub||!['breakfast','lunch','snack','dinner'].includes(b.meal)))throw problem('내 식단만 등록할 수 있어요.',403);
   if(b.kind==='comment'&&!idOK(b.mealId))throw problem('코멘트를 남길 식단을 선택해 주세요.');
   const extra={};
@@ -70,6 +71,7 @@ export default {
       if(path.startsWith('/auth/'))return answer(await authAction(path.slice(6),b,env,person));
       if(path==='/account/ready'){await registerAccount(env,person.sub);return answer({ok:true});}
       if(path==='/publish'){const result=await publish(b,person,env,token);ctx.waitUntil(deliver(env,b.id));return answer(result);}
+      if(path==='/meal/remove')return answer(await removeMeal(env,person,b.id,token));
       if(path==='/routine/sync'){await registerAccount(env,person.sub);return answer(await syncRoutine(env,person,b,token));}
       if(path==='/routine/settings'){const settings=await sql(env,'SELECT enabled FROM routine_settings WHERE uid=?',person.sub).first();return answer({enabled:settings?settings.enabled===1:true});}
       if(path==='/push/subscribe')return answer(await subscribe(env,person.sub,b));

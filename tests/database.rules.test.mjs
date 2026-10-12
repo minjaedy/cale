@@ -24,12 +24,12 @@ test('profile registration stores personal goals but role cannot be switched lat
   await assertFails(owner().ref(p+'/role').set('trainer'));await assertFails(other().ref(p).once('value'));
 });
 
-test('retention token can only delete its assigned expired records and preserves recent weight and routine',async()=>{
+test('retention token deletes only its assigned records older than 365 days and preserves all recent fields',async()=>{
   const today=new Date().toISOString().slice(0,10),old='2026-01-01',ancient='2024-01-01';
-  await env.withSecurityRulesDisabled(async c=>{await c.database().ref(root).set({events:{e:event},days:{[old]:record,[ancient]:record,[today]:record}});await c.database().ref('tempo/coaching/feed/alice').set({expired:{kind:'meal',date:old},recent:{kind:'meal',date:today}});});
-  const db=env.authenticatedContext('tempo-maintenance',{firebase:{sign_in_provider:'custom'},tempo_retention:true,ownerUid:'alice',before:'2026-09-12',weightBefore:'2025-10-12',seenBefore:Date.now()-30*86400000}).database();
+  await env.withSecurityRulesDisabled(async c=>{await c.database().ref(root).set({events:{e:event},days:{[old]:record,[ancient]:record,[today]:record}});await c.database().ref('tempo/coaching/feed/alice').set({expired:{kind:'meal',date:ancient},recent:{kind:'meal',date:old}});});
+  const db=env.authenticatedContext('tempo-maintenance',{firebase:{sign_in_provider:'custom'},tempo_retention:true,ownerUid:'alice',before:'2025-10-13',weightBefore:'2025-10-13',seenBefore:Date.now()-365*86400000}).database();
   await assertSucceeds(db.ref(root+'/days').once('value'));await assertFails(db.ref('tempo/users/bob/days').once('value'));
-  await assertSucceeds(db.ref(root+'/days/'+old).update({items:null,lunch:null}));
+  await assertFails(db.ref(root+'/days/'+old).update({items:null,lunch:null}));
   await assertFails(db.ref(root+'/days/'+old).remove());await assertFails(db.ref(root+'/days/'+old+'/weight').set(75));
   await assertSucceeds(db.ref(root+'/days/'+ancient).remove());await assertFails(db.ref(root+'/days/'+today).remove());await assertFails(db.ref(root+'/events/e').remove());
   await assertSucceeds(db.ref('tempo/coaching/feed/alice/expired').remove());await assertFails(db.ref('tempo/coaching/feed/alice/recent').remove());await assertFails(db.ref('tempo/coaching/profiles/alice').set({name:'override',role:'trainer'}));
@@ -167,7 +167,7 @@ test('meals and comments are shared only with the linked pair and remain immutab
   await assertSucceeds(member.ref(feed).once('value'));await assertSucceeds(trainer.ref(feed).once('value'));
   await assertFails(client('bob').ref(feed).once('value'));
   await assertFails(member.ref(feed+'/meal-1/text').set('changed'));
-  await assertFails(member.ref(feed+'/meal-1').remove());await assertFails(trainer.ref(feed+'/comment-1').remove());
+  await assertFails(trainer.ref(feed+'/meal-1').remove());await assertFails(trainer.ref(feed+'/comment-1').remove());
   await assertFails(member.ref(feed+'/fake').set(comment()));
   await assertFails(trainer.ref(feed+'/other').set({...comment(),mealId:'missing'}));
   await assertFails(trainer.ref(feed+'/wrong-date').set({...comment(),date:'2026-10-11'}));
@@ -192,4 +192,16 @@ test('service claims can read only required coaching paths and cannot write or r
   await assertFails(service.ref(coachRoot+'/feed/alice/meal-1').remove());
   await assertFails(service.ref('tempo/users/alice').once('value'));
   await assertFails(service.ref(coachRoot+'/invites/'+code).once('value'));
+  await assertSucceeds(service.ref(coachRoot+'/invites').orderByChild('expiresAt').endAt(Date.now()-60000).limitToFirst(100).once('value'));
+});
+test('only the member can delete a meal and its now orphaned comments',async()=>{
+  const {member,trainer}=await connectedPair(),feed=coachRoot+'/feed/alice';
+  await member.ref(feed+'/meal-1').set(meal());await trainer.ref(feed+'/comment-1').set(comment());
+  await assertFails(client('bob').ref(feed+'/meal-1').remove());
+  await assertFails(trainer.ref(feed+'/meal-1').remove());
+  await assertFails(member.ref(feed+'/comment-1').remove());
+  await assertSucceeds(member.ref(feed+'/meal-1').remove());
+  await assertFails(trainer.ref(feed+'/late-comment').set(comment()));
+  await assertSucceeds(member.ref(feed).orderByChild('mealId').equalTo('meal-1').once('value'));
+  await assertSucceeds(member.ref(feed+'/comment-1').remove());
 });

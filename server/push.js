@@ -29,6 +29,11 @@ export async function deliver(env,onlyMessage=null,services={database,fetch:(...
       const device=await sql(env,'SELECT * FROM devices WHERE id=? AND uid=?',job.device_id,job.recipient).first();
       const trainer=job.kind==='meal'?job.recipient:job.author;
       let link=['test','routine'].includes(job.kind)?true:await services.database(env,'tempo/coaching/links/'+job.member+'/'+trainer);
+      if(link&&['meal','comment'].includes(job.kind)){
+        const message=await services.database(env,'tempo/coaching/feed/'+job.member+'/'+job.message_id);
+        link=!!message;
+        if(message?.kind==='comment')link=!!await services.database(env,'tempo/coaching/feed/'+job.member+'/'+message.mealId);
+      }
       if(job.kind==='routine'){
         const setting=await sql(env,'SELECT enabled FROM routine_settings WHERE uid=?',job.recipient).first();
         const event=(await sql(env,'SELECT id,minute FROM routine_events WHERE uid=?',job.recipient).all()).results.find(e=>job.message_id.startsWith('routine-'+e.id+'-')&&job.message_id.endsWith('-'+e.minute));

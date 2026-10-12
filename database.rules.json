@@ -44,7 +44,7 @@
           },
           "days": {
             "$date": {
-              ".write": "(auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && newData.exists()) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $uid && $date < auth.token.before && (!newData.child('weight').exists() || newData.child('weight').val() === data.child('weight').val()) && (!newData.child('weeklyWeight').exists() || newData.child('weeklyWeight').val() === data.child('weeklyWeight').val()) && (!newData.child('updatedAt').exists() || newData.child('updatedAt').val() === data.child('updatedAt').val()) && !newData.child('items').exists() && !newData.child('completed').exists() && !newData.child('breakfast').exists() && !newData.child('lunch').exists() && !newData.child('snack').exists() && !newData.child('dinner').exists() && ($date < auth.token.weightBefore || (newData.child('weight').val() === data.child('weight').val() && newData.child('weeklyWeight').val() === data.child('weeklyWeight').val())))",
+              ".write": "(auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && newData.exists()) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $uid && auth.token.before === auth.token.weightBefore && $date < auth.token.before && !newData.exists())",
               ".validate": "$date.matches(/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/) && newData.hasChild('updatedAt')",
               "items": {
                 "str": {
@@ -222,7 +222,7 @@
           ".indexOn": [
             "expiresAt"
           ],
-          ".read": "auth != null && auth.token.tempo_service === true && query.orderByChild === 'expiresAt' && query.endAt <= now && query.limitToFirst > 0 && query.limitToFirst <= 100"
+          ".read": "auth != null && auth.token.tempo_service === true && query.orderByChild === 'expiresAt' && query.limitToFirst > 0 && query.limitToFirst <= 100"
         },
         "links": {
           "$member": {
@@ -263,10 +263,11 @@
             ".read": "((auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $member) || (auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') || (auth != null && auth.token.tempo_service === true)) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $member)",
             ".indexOn": [
               "createdAt",
-              "date"
+              "date",
+              "mealId"
             ],
             "$id": {
-              ".write": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && !data.exists() && newData.exists() && newData.child('authorUid').val() === auth.uid && ((auth.uid === $member && newData.child('kind').val() === 'meal') || ((auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') && newData.child('kind').val() === 'comment' && root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('kind').val() === 'meal' && newData.child('date').val() === root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('date').val()))) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $member && !newData.exists() && data.child('date').val() < auth.token.before)",
+              ".write": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && !data.exists() && newData.exists() && newData.child('authorUid').val() === auth.uid && ((auth.uid === $member && newData.child('kind').val() === 'meal') || ((auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') && newData.child('kind').val() === 'comment' && root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('kind').val() === 'meal' && newData.child('date').val() === root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('date').val()))) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $member && auth.token.before === auth.token.weightBefore && !newData.exists() && data.child('date').val() < auth.token.before) || (auth != null && auth.uid === $member && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.token.tempo_retention !== true && !newData.exists() && (data.child('kind').val() === 'meal' || (data.child('kind').val() === 'comment' && !root.child('tempo/coaching/feed').child($member).child(data.child('mealId').val()).exists())))",
               ".validate": "$id.matches(/^[a-zA-Z0-9_-]{1,128}$/) && newData.hasChildren(['kind','authorUid','authorName','date','text','createdAt']) && ((newData.child('kind').val() === 'meal' && newData.hasChild('meal') && !newData.hasChild('mealId')) || (newData.child('kind').val() === 'comment' && newData.hasChild('mealId') && !newData.hasChild('meal')))",
               "kind": {
                 ".validate": "newData.val() === 'meal' || newData.val() === 'comment'"

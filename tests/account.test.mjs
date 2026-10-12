@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {isLegacyOwner,initialCalendar,routineEdit,routineDelete,profileInput} from '../account-core.mjs';
 import {parseFood,calorieTarget,currentWeight,dailyNutrition} from '../nutrition-core.mjs';
-import {cutoffs,pruneDays,pruneQueue} from '../retention-core.mjs';
+import {cutoffs,pruneDays,pruneQueue,DAY} from '../retention-core.mjs';
+import {canMoveBack,clampSelection,hasHistory,shiftDate} from '../calendar-core.mjs';
 import {customFoodInput,customCatalog} from '../custom-foods.mjs';
 const catalog=JSON.parse(await readFile(new URL('../food-catalog.json',import.meta.url))).foods;
 test('legacy seeding is limited to the verified owner and never replaces an existing account',async()=>{
@@ -62,10 +63,24 @@ test('custom food scales servings and overrides only the owner catalogue, includ
   assert.throws(()=>customFoodInput({...food,amount:0}));
   assert.equal(customFoodInput({...food,calories:0}).calories,0);
 });
-test('30 day daily retention and 365 day weight retention also remove stale offline writes',()=>{
+test('all dated records remain for 365 days and stale offline writes cannot restore expired dates',()=>{
   const now=Date.parse('2026-10-12T10:00:00Z'),{before,weightBefore}=cutoffs(now);
   const days={ [before]:{lunch:'보관',updatedAt:now},'2026-09-01':{weeklyWeight:80,lunch:'삭제',completed:{a:true},updatedAt:now},'2025-01-01':{weight:90,updatedAt:now}};
-  assert.deepEqual(pruneDays(days,now),{[before]:days[before],'2026-09-01':{weeklyWeight:80,updatedAt:now}});
+  assert.deepEqual(pruneDays(days,now),{[before]:days[before],'2026-09-01':days['2026-09-01']});
   const q=pruneQueue({'days/2026-09-01/lunch':{value:'삭제'},'days/2026-09-01/weeklyWeight':{value:80},'events/id':{value:{title:'유지'}}},now);
-  assert.equal(Object.keys(q).length,2);assert.equal(weightBefore,'2025-10-12');
+  assert.equal(Object.keys(q).length,3);assert.equal(weightBefore,'2025-10-13');
+  const all=Object.fromEntries(Array.from({length:800},(_,i)=>[shiftDate('2026-10-12',-i),{lunch:'기록',completed:{a:true},weeklyWeight:80}]));
+  assert.equal(Object.keys(pruneDays(all,now)).length,365);
+  const tomorrow=pruneDays(all,now+DAY);assert.equal(tomorrow[before],undefined);assert.deepEqual(tomorrow['2026-10-12'],all['2026-10-12']);
+  assert.deepEqual(pruneQueue({'days/2025-10-12/weeklyWeight':{value:80},'days/2025-10-12/completed/a':{value:true},'events/id':{value:{title:'유지'}}},now),{'events/id':{value:{title:'유지'}}});
+});
+test('calendar permits last year and future planning, clamps only expired dates, including partial weeks and leap years',()=>{
+  const today='2026-10-12';
+  assert.equal(hasHistory('2026-05-12',today),true);assert.equal(hasHistory('2025-10-12',today),false);
+  assert.equal(hasHistory('2026-05-12','2028-01-01'),false);
+  assert.equal(canMoveBack('2025-10-13',today),false);
+  assert.deepEqual(clampSelection('2025-01-06',0,today),{week:'2025-10-13',day:0,date:'2025-10-13'});
+  assert.deepEqual(clampSelection('2025-10-13',0,'2026-10-13'),{week:'2025-10-13',day:1,date:'2025-10-14'});
+  assert.deepEqual(clampSelection('2026-10-12',1,today),{week:'2026-10-12',day:1,date:'2026-10-13'});
+  assert.equal(shiftDate('2024-03-01',-1),'2024-02-29');
 });

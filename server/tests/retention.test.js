@@ -4,12 +4,13 @@ import {dayRemovals,maintainAccount,registerAccount} from '../retention.js';
 import {environment} from './helpers.js';
 import {messageInput,runScheduled} from '../worker.js';
 import {syncRoutine,scheduleRoutines} from '../reminders.js';
-test('cleanup removes daily records together but preserves weights under one year',async()=>{
+test('cleanup removes all records over one year together and preserves all recent fields',async()=>{
   const now=Date.parse('2026-10-12T10:00:00Z'),days={'2026-09-01':{weight:80,weeklyWeight:79,lunch:'밥',items:{a:true},completed:{b:true},updatedAt:now},'2024-01-01':{weight:90,updatedAt:1},'2026-10-12':{lunch:'오늘',updatedAt:now}};
-  assert.deepEqual(dayRemovals(days,now),{'2026-09-01/lunch':null,'2026-09-01/items':null,'2026-09-01/completed':null,'2024-01-01':null});
+  assert.deepEqual(dayRemovals(days,now),{'2024-01-01':null});
   const calls=[],service={retentionToken:async()=> 'scoped',database:async(e,p,o)=>{calls.push([p,o]);if(o.method)return null;return p.endsWith('/days')?days:p.includes('/feed/')?{meal:{},comment:{}}:{seen:1}}};
   assert.equal(await maintainAccount({},'member',now,service),false);
   const feed=calls.find(([p,o])=>p.includes('/feed/')&&o.method);assert.deepEqual(feed[1].body,{meal:null,comment:null});assert.equal(feed[1].token,'scoped');
+  assert.equal(calls.find(([p])=>p.endsWith('/days'))[1].query.endAt,'2025-10-12');
   const env=environment();try{await registerAccount(env,'member');await registerAccount(env,'member');assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM account_maintenance').get().n,1)}finally{env.sqlite.close()}
 });
 test('server rejects expired meals and invalid nutrition, accepts sticker with text',()=>{

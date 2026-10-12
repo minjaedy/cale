@@ -32,6 +32,7 @@ export async function maintenanceTick(env,now=Date.now()){
   catch(error){await sql(env,'UPDATE account_maintenance SET last_run=? WHERE uid=?',now-3500000,row.uid).run();console.error('Account retention retry scheduled:',String(error?.message||'unknown').slice(0,120));}
 }
 export async function cleanupInvites(env,now=Date.now()){
-  const path='tempo/coaching/invites',rows=await database(env,path,{query:{orderBy:'expiresAt',endAt:now,limitToFirst:100}});
+  // Allow for clock skew between Workers and RTDB's rules clock.
+  const path='tempo/coaching/invites',rows=await database(env,path,{query:{orderBy:'expiresAt',endAt:now-60000,limitToFirst:100}});
   if(Object.keys(rows||{}).length)await database(env,path,{method:'PATCH',body:Object.fromEntries(Object.keys(rows).map(id=>[id,null]))});
 }
