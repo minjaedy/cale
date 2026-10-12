@@ -1,13 +1,13 @@
 {
   "name": "tempo-routine",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "TEMPO — iPhone-first routine calendar with Firebase Realtime Database",
   "type": "module",
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/sync-core.test.mjs tests/updates.test.mjs",
+    "test": "node --test tests/sync-core.test.mjs tests/updates.test.mjs tests/account.test.mjs",
     "test:rules": "firebase emulators:exec --project demo-tempo --only database \"node --test tests/database.rules.test.mjs\"",
     "deploy:rules": "firebase deploy --only database --project cale-b2c40",
     "deploy:web": "gh workflow run pages.yml --repo minjaedy/cale --ref main",

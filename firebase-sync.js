@@ -1,13 +1,16 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
-import { getDatabase, ref, onValue, update, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+import { getDatabase, ref, get, onValue, update, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 import { clone, applyPatch, cleanEvent, eventDiff, mergeOutbox, acknowledge, queuedPatch } from './sync-core.mjs?v=3';
+import {pruneDays,pruneQueue} from './retention-core.mjs?v=3';
+import {isLegacyOwner,initialCalendar} from './account-core.mjs?v=3';
 
 const ui=window.Tempo, config=window.TEMPO_FIREBASE_CONFIG;
 const app=initializeApp(config), auth=getAuth(app), db=getDatabase(app), provider=new GoogleAuthProvider();
 provider.setCustomParameters({prompt:'select_account'});
 let user=null, connected=false, unsubscribe=null, queue={}, busy=false, ready=false, revision=0, generation=0, lastEvents=[], currentData={};
 let signingIn=false;
+let accountTask=Promise.resolve(),legacyOwner=false,resolveAccount=null;
 let state={status:'signed-out',user:null,message:'Google 계정 동기화'};
 const queueKey=uid=>'tempo-outbox-v1:'+uid;
 const friendlyError=error=>({
@@ -21,27 +24,41 @@ const friendlyError=error=>({
 function publish(message,status){state={status:status||(user?(!ready?'loading':connected?'connected':'offline'):'signed-out'),user:user?{uid:user.uid,name:user.displayName||'내 계정',email:user.email||''}:null,message:message||(user?(!ready?'기록 불러오는 중':Object.keys(queue).length?'동기화 중':connected?'저장 완료':'오프라인 · 전송 대기'):'Google 계정 동기화')};ui.cloudStatus(state);if(ready&&connected&&!busy&&!Object.keys(queue).length)window.dispatchEvent(new Event('tempo-synced'));}
 function saveQueue(){if(!user)return;try{localStorage.setItem(queueKey(user.uid),JSON.stringify(queue));}catch{ui.notify('오프라인 보관 공간이 부족해요. 연결될 때까지 이 화면을 열어 두세요.');}}
 function enqueue(patch){if(!user||!Object.keys(patch).length)return;queue=mergeOutbox(queue,patch,++revision);saveQueue();publish();flush();}
-async function flush(){if(!user||!ready||!connected||busy||!Object.keys(queue).length)return;const mine=generation,uid=user.uid,sent=clone(queue);busy=true;try{await update(ref(db,'tempo/users/'+uid),queuedPatch(sent));if(mine!==generation)return;queue=acknowledge(queue,sent);saveQueue();publish();}catch(error){if(mine===generation)publish(friendlyError(error),'error');return;}finally{if(mine===generation){busy=false;window.dispatchEvent(new Event('tempo-synced'));}}if(mine===generation&&Object.keys(queue).length)flush();}
-function receive(data){currentData=data||{};const merged=applyPatch(currentData,queuedPatch(queue));const nextEvents=Object.entries(merged.events||{}).map(([id,e])=>({id,...e}));lastEvents=nextEvents;ui.receiveCloud({events:nextEvents,logs:merged.days||{}});}
+async function flush(){if(!user||!ready||!connected||busy||!Object.keys(queue).length)return;queue=pruneQueue(queue);saveQueue();if(!Object.keys(queue).length)return;const mine=generation,uid=user.uid,sent=clone(queue);busy=true;try{await update(ref(db,'tempo/users/'+uid),queuedPatch(sent));if(mine!==generation)return;queue=acknowledge(queue,sent);saveQueue();publish();}catch(error){if(mine===generation)publish(friendlyError(error),'error');return;}finally{if(mine===generation){busy=false;window.dispatchEvent(new Event('tempo-synced'));}}if(mine===generation&&Object.keys(queue).length)flush();}
+function receive(data){currentData=data||{};const merged=applyPatch(currentData,queuedPatch(queue));const nextEvents=Object.entries(merged.events||{}).map(([id,e])=>({id,...e}));lastEvents=nextEvents;ui.receiveCloud({events:nextEvents,logs:pruneDays(merged.days||{})});}
 onValue(ref(db,'.info/connected'),snap=>{connected=snap.val()===true;if(user){publish();flush();}});
 await setPersistence(auth,browserLocalPersistence).catch(()=>ui.notify('로그인 정보를 계속 보관할 수 없는 브라우저예요.'));
 onAuthStateChanged(auth,next=>{
+  resolveAccount?.();resolveAccount=null;
   generation++;unsubscribe?.();unsubscribe=null;user=next;busy=false;ready=false;queue={};currentData={};
-  ui.setAccount(user?.uid||null);
-  if(!user){publish();return;}
-  try{queue=JSON.parse(localStorage.getItem(queueKey(user.uid))||'{}')||{};}catch{queue={};}
-  revision=Math.max(0,...Object.values(queue).map(v=>v.revision||0));lastEvents=ui.snapshot().events;
+  const mine=generation;legacyOwner=false;
+  ui.setAccount(user?.uid||null,false);
+  if(!user){accountTask=Promise.resolve();publish();return;}
   publish('기록 불러오는 중','loading');
-  const mine=generation;
-  unsubscribe=onValue(ref(db,'tempo/users/'+user.uid),snap=>{
+  accountTask=(async()=>{
+    const uid=next.uid,legacy=await isLegacyOwner(next);if(mine!==generation)return;
+    legacyOwner=legacy;ui.setAccount(uid,legacy);
+    try{queue=JSON.parse(localStorage.getItem(queueKey(uid))||'{}')||{};}catch{queue={};}
+    queue=pruneQueue(queue);saveQueue();revision=Math.max(0,...Object.values(queue).map(v=>v.revision||0));
+    const root=ref(db,'tempo/users/'+uid),snapshot=await get(root);if(mine!==generation)return;
+    if(!snapshot.exists()){
+      const seed=legacy?ui.snapshot():{events:[],logs:{}};
+      await runTransaction(root,current=>initialCalendar(current,seed),{applyLocally:false});
+    }else if(!snapshot.val().meta?.initialized)await update(root,{'meta/initialized':true});
     if(mine!==generation)return;
-    const data=snap.val()||{};ready=true;
-    if(!data.meta?.initialized){const initial={'meta/initialized':true};if(!data.events)for(const e of lastEvents)initial['events/'+e.id]=cleanEvent(e);queue=mergeOutbox(queue,initial,++revision);saveQueue();}
-    receive(data);publish();flush();
-  },error=>{if(mine===generation){ready=false;publish(friendlyError(error),'error');}});
+    await new Promise((resolve,reject)=>{
+      resolveAccount=resolve;
+      unsubscribe=onValue(root,snap=>{
+        if(mine!==generation)return;ready=true;receive(snap.val()||{});publish();flush();resolveAccount=null;resolve();
+      },error=>{if(mine===generation){ready=false;publish(friendlyError(error),'error');resolveAccount=null;reject(error);}});
+    });
+  })().catch(error=>{if(mine===generation){ready=false;publish(friendlyError(error),'error');}throw error;});
+  accountTask.catch(()=>{});
 });
 window.TempoCloud={
   get state(){return state;},
+  get legacyOwner(){return legacyOwner;},
+  async accountReady(uid){await accountTask;if(user?.uid!==uid)throw Error('계정이 변경됐어요. 다시 입장해 주세요.');},
   get pending(){return Object.keys(queue).length>0||busy;},
   async login(){if(location.protocol==='file:'){ui.notify('동기화는 배포한 웹사이트에서 사용할 수 있어요.');return;}if(signingIn)return;signingIn=true;try{const pending=signInWithPopup(auth,provider);publish('Google 로그인 창에서 계정을 선택해 주세요.','signing-in');await pending;}catch(error){if(!['auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(error.code)){publish(friendlyError(error),'error');ui.notify(friendlyError(error));}else publish();}finally{signingIn=false;}},
   async logout(){if(Object.keys(queue).length){ui.notify('동기화 완료 후 로그아웃해 주세요.');return false;}try{await window.TempoCoach?.beforeLogout();await signOut(auth);return true}catch(error){ui.notify(error.message||'로그아웃 실패');return false}},

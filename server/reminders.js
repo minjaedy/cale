@@ -10,7 +10,7 @@ export async function syncRoutine(env,person,b,token,read=database){
   const events=await read(env,'tempo/users/'+person.sub+'/events',{token});
   const rows=[];
   for(const [id,e] of Object.entries(events||{})){
-    if(!Number.isInteger(e.day)||e.day<0||e.day>4||!/^([01]\d|2[0-3]):[0-5]\d$/.test(e.start)||typeof e.title!=='string')continue;
+    if(!Number.isInteger(e.day)||e.day<0||e.day>6||!/^([01]\d|2[0-3]):[0-5]\d$/.test(e.start)||typeof e.title!=='string')continue;
     const [h,m]=e.start.split(':').map(Number),title=e.cat==='str'?'근력':e.cat==='cardio'?'유산소':e.title.slice(0,40);
     rows.push({id,day:e.day,minute:h*60+m,title});
   }

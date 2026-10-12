@@ -17,7 +17,7 @@
               ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous'",
               ".validate": "$eventId.matches(/^[a-zA-Z0-9_-]{1,100}$/) && newData.hasChildren(['day','title','start','end','cat']) && newData.child('end').val() > newData.child('start').val()",
               "day": {
-                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 4 && newData.val() % 1 === 0"
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 6 && newData.val() % 1 === 0"
               },
               "title": {
                 ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40"
@@ -36,12 +36,15 @@
               },
               "$other": {
                 ".validate": false
+              },
+              "seriesId": {
+                ".validate": "newData.isString() && newData.val().matches(/^[a-zA-Z0-9_-]{1,100}$/)"
               }
             }
           },
           "days": {
             "$date": {
-              ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && newData.exists()",
+              ".write": "(auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && newData.exists()) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $uid && $date < auth.token.before && (!newData.child('weight').exists() || newData.child('weight').val() === data.child('weight').val()) && (!newData.child('weeklyWeight').exists() || newData.child('weeklyWeight').val() === data.child('weeklyWeight').val()) && (!newData.child('updatedAt').exists() || newData.child('updatedAt').val() === data.child('updatedAt').val()) && !newData.child('items').exists() && !newData.child('completed').exists() && !newData.child('breakfast').exists() && !newData.child('lunch').exists() && !newData.child('snack').exists() && !newData.child('dinner').exists() && ($date < auth.token.weightBefore || (newData.child('weight').val() === data.child('weight').val() && newData.child('weeklyWeight').val() === data.child('weeklyWeight').val())))",
               ".validate": "$date.matches(/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/) && newData.hasChild('updatedAt')",
               "items": {
                 "str": {
@@ -93,13 +96,48 @@
                 "$eventId": {
                   ".validate": "$eventId.matches(/^[a-zA-Z0-9_-]{1,100}$/) && newData.isBoolean()"
                 }
+              },
+              "weeklyWeight": {
+                ".validate": "newData.isNumber() && newData.val() >= 30 && newData.val() <= 200"
               }
-            }
+            },
+            ".read": "auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $uid"
           },
           "meta": {
             "initialized": {
               ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && newData.val() === true",
               ".validate": "newData.val() === true"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_retention !== true && !data.exists() && newData.child('meta/initialized').val() === true",
+          "$other": {
+            ".validate": false
+          },
+          "foods": {
+            "$foodId": {
+              ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.token.tempo_retention !== true",
+              ".validate": "$foodId.matches(/^[a-zA-Z0-9_-]{1,128}$/) && newData.hasChildren(['name','amount','unit','calories','updatedAt'])",
+              "name": {
+                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+              },
+              "amount": {
+                ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 10000"
+              },
+              "unit": {
+                ".validate": "newData.isString() && newData.val().matches(/^(g|ml|인분|개|잔|공기|조각|봉지|팩)$/)"
+              },
+              "calories": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000"
+              },
+              "updatedAt": {
+                ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= now + 60000"
+              },
+              "$other": {
+                ".validate": false
+              }
             }
           }
         }
@@ -111,20 +149,59 @@
             ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid && newData.exists()",
             ".validate": "newData.hasChildren(['role','name'])",
             "role": {
-              ".validate": "newData.val() === 'member' || newData.val() === 'trainer'"
+              ".validate": "(newData.val() === 'member' || newData.val() === 'trainer') && (!data.exists() || newData.val() === data.val())"
             },
             "name": {
               ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
             },
             "$other": {
               ".validate": false
+            },
+            "registered": {
+              ".validate": "newData.val() === true"
+            },
+            "calendarName": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30"
+            },
+            "age": {
+              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 120"
+            },
+            "height": {
+              ".validate": "newData.isNumber() && newData.val() >= 100 && newData.val() <= 250"
+            },
+            "startWeight": {
+              ".validate": "newData.isNumber() && newData.val() >= 30 && newData.val() <= 200"
+            },
+            "targetWeight": {
+              ".validate": "newData.isNumber() && newData.val() >= 30 && newData.val() <= 200"
+            },
+            "calorieGoal": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000"
+            },
+            "proteinGoal": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
+            },
+            "fatGoal": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
+            },
+            "carbGoal": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
+            },
+            "nutritionMode": {
+              ".validate": "newData.val() === 'auto' || newData.val() === 'manual'"
+            },
+            "formulaSex": {
+              ".validate": "newData.val() === 'male' || newData.val() === 'female'"
+            },
+            "activity": {
+              ".validate": "newData.val() === 'low' || newData.val() === 'light' || newData.val() === 'moderate' || newData.val() === 'high'"
             }
           }
         },
         "invites": {
           "$code": {
             ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true",
-            ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && ((!data.exists() && newData.child('member').val() === auth.uid && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'member') || (data.exists() && !newData.exists() && (data.child('member').val() === auth.uid || data.child('claimedBy').val() === auth.uid)) || (data.exists() && (!data.child('claimedBy').exists() || data.child('claimedBy').val() === auth.uid) && data.child('expiresAt').val() > now && data.child('member').val() !== auth.uid && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer' && newData.child('claimedBy').val() === auth.uid && newData.child('member').val() === data.child('member').val() && newData.child('name').val() === data.child('name').val() && newData.child('expiresAt').val() === data.child('expiresAt').val()))",
+            ".write": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && ((!data.exists() && newData.child('member').val() === auth.uid && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'member') || (data.exists() && !newData.exists() && (data.child('member').val() === auth.uid || data.child('claimedBy').val() === auth.uid)) || (data.exists() && (!data.child('claimedBy').exists() || data.child('claimedBy').val() === auth.uid) && data.child('expiresAt').val() > now && data.child('member').val() !== auth.uid && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer' && newData.child('claimedBy').val() === auth.uid && newData.child('member').val() === data.child('member').val() && newData.child('name').val() === data.child('name').val() && newData.child('expiresAt').val() === data.child('expiresAt').val()))) || (auth != null && auth.token.tempo_service === true && !newData.exists() && data.child('expiresAt').val() <= now)",
             ".validate": "$code.matches(/^[a-f0-9]{32}$/) && newData.hasChildren(['member','name','expiresAt'])",
             "member": {
               ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
@@ -141,7 +218,11 @@
             "$other": {
               ".validate": false
             }
-          }
+          },
+          ".indexOn": [
+            "expiresAt"
+          ],
+          ".read": "auth != null && auth.token.tempo_service === true && query.orderByChild === 'expiresAt' && query.endAt <= now && query.limitToFirst > 0 && query.limitToFirst <= 100"
         },
         "links": {
           "$member": {
@@ -179,12 +260,13 @@
         },
         "feed": {
           "$member": {
-            ".read": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $member) || (auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') || (auth != null && auth.token.tempo_service === true)",
+            ".read": "((auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $member) || (auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') || (auth != null && auth.token.tempo_service === true)) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $member)",
             ".indexOn": [
-              "createdAt"
+              "createdAt",
+              "date"
             ],
             "$id": {
-              ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && !data.exists() && newData.exists() && newData.child('authorUid').val() === auth.uid && ((auth.uid === $member && newData.child('kind').val() === 'meal') || ((auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') && newData.child('kind').val() === 'comment' && root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('kind').val() === 'meal' && newData.child('date').val() === root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('date').val()))",
+              ".write": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && !data.exists() && newData.exists() && newData.child('authorUid').val() === auth.uid && ((auth.uid === $member && newData.child('kind').val() === 'meal') || ((auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') && newData.child('kind').val() === 'comment' && root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('kind').val() === 'meal' && newData.child('date').val() === root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('date').val()))) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $member && !newData.exists() && data.child('date').val() < auth.token.before)",
               ".validate": "$id.matches(/^[a-zA-Z0-9_-]{1,128}$/) && newData.hasChildren(['kind','authorUid','authorName','date','text','createdAt']) && ((newData.child('kind').val() === 'meal' && newData.hasChild('meal') && !newData.hasChild('mealId')) || (newData.child('kind').val() === 'comment' && newData.hasChild('mealId') && !newData.hasChild('meal')))",
               "kind": {
                 ".validate": "newData.val() === 'meal' || newData.val() === 'comment'"
@@ -212,17 +294,35 @@
               },
               "$other": {
                 ".validate": false
+              },
+              "sticker": {
+                ".validate": "newData.parent().child('kind').val() === 'comment' && newData.isString() && newData.val().matches(/^(good|best|cheer|seen|miss|retry|rest|steady)$/)"
+              },
+              "calories": {
+                ".validate": "newData.parent().child('kind').val() === 'meal' && newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000"
+              },
+              "calorieGoal": {
+                ".validate": "newData.parent().child('kind').val() === 'meal' && newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000"
+              },
+              "nutritionComplete": {
+                ".validate": "newData.parent().child('kind').val() === 'meal' && newData.isBoolean()"
+              },
+              "nutritionMethod": {
+                ".validate": "newData.parent().child('kind').val() === 'meal' && (newData.val() === 'manual' || newData.val() === 'catalog-v1' || newData.val() === 'mfds-20260828')"
               }
             }
           }
         },
         "seen": {
           "$uid": {
-            ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid",
+            ".read": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $uid)",
             "$id": {
-              ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid",
-              ".validate": "$id.matches(/^[a-zA-Z0-9_-]{1,128}$/) && newData.val() === true"
-            }
+              ".write": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid) || (auth != null && auth.token.tempo_retention === true && auth.token.ownerUid === $uid && !newData.exists() && (data.val() === true || data.val() < auth.token.seenBefore))",
+              ".validate": "$id.matches(/^[a-zA-Z0-9_-]{1,128}$/) && (newData.val() === true || (newData.isNumber() && newData.val() > 0 && newData.val() <= now+60000))"
+            },
+            ".indexOn": [
+              ".value"
+            ]
           }
         }
       }

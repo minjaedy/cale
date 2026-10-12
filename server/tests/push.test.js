@@ -27,7 +27,7 @@ test('meals notify linked trainers; comments notify the member; retry does not r
     await publish({id:'c1',member:'member',kind:'comment',date,mealId:'m1',text:'잘 드셨어요.'},{sub:'coach'},env,'token',services);assert.deepEqual(recipients,['member']);assert.throws(()=>messageInput({...meal,member:'other'},{sub:'member'}));
   }finally{env.sqlite.close()}
 });
-test('routine schedules use the user timezone, skip weekends, deduplicate and honor edits and disabled settings',async()=>{
+test('routine schedules use the user timezone, deduplicate and honor edits and disabled settings',async()=>{
   const env=environment(),person={sub:'member'},at=Date.parse('2026-10-12T10:30:00Z');
   try{
     assert.deepEqual(localClock(at,'Asia/Seoul'),{date:'2026-10-12',day:0,minute:1170});

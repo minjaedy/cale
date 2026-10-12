@@ -15,3 +15,12 @@ CREATE INDEX IF NOT EXISTS routine_timezone ON routine_settings(enabled,timezone
 CREATE TABLE IF NOT EXISTS routine_events(uid TEXT NOT NULL,id TEXT NOT NULL,day INTEGER NOT NULL,minute INTEGER NOT NULL,title TEXT NOT NULL,PRIMARY KEY(uid,id));
 CREATE INDEX IF NOT EXISTS routine_due ON routine_events(day,minute,uid);
 
+
+CREATE TABLE IF NOT EXISTS account_maintenance(uid TEXT PRIMARY KEY,last_run INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS maintenance_due ON account_maintenance(last_run);
+INSERT OR IGNORE INTO account_maintenance(uid) SELECT uid FROM routine_settings UNION SELECT uid FROM devices UNION SELECT uid FROM passkeys;
+
+CREATE TABLE IF NOT EXISTS community_foods(id TEXT PRIMARY KEY,owner_hash TEXT NOT NULL,payload TEXT,revision TEXT NOT NULL,dirty INTEGER NOT NULL DEFAULT 1,deleted INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS foods_pending ON community_foods(dirty,updated_at);
+CREATE INDEX IF NOT EXISTS foods_owner ON community_foods(owner_hash,deleted);
+CREATE TABLE IF NOT EXISTS food_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);

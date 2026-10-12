@@ -12,6 +12,29 @@ const root='tempo/users/alice';
 const event={day:0,title:'근력',start:'19:30',end:'20:30',cat:'str',note:''};
 const record={items:{diet:true,run:false},weight:89.5,lunch:'밥과 닭가슴살',updatedAt:Date.now()};
 
+test('first registration creates an empty or seeded calendar atomically, never overwrites an existing root',async()=>{
+  const db=owner();await assertSucceeds(db.ref(root).set({meta:{initialized:true},events:{sunday:{...event,day:6,seriesId:'series1'}}}));
+  await assertFails(db.ref(root).set({meta:{initialized:true}}));
+  await assertSucceeds(db.ref(root+'/days/2026-10-12').set({weeklyWeight:84,updatedAt:Date.now()}));
+  await assertFails(other().ref(root+'/days/2026-10-12/weeklyWeight').set(50));
+});
+
+test('profile registration stores personal goals but role cannot be switched later',async()=>{
+  const p='tempo/coaching/profiles/alice';await assertSucceeds(owner().ref(p).set({role:'member',name:'민재',registered:true,calendarName:'내 루틴',age:30,height:175,startWeight:90,targetWeight:75,formulaSex:'male',activity:'moderate',nutritionMode:'auto'}));
+  await assertFails(owner().ref(p+'/role').set('trainer'));await assertFails(other().ref(p).once('value'));
+});
+
+test('retention token can only delete its assigned expired records and preserves recent weight and routine',async()=>{
+  const today=new Date().toISOString().slice(0,10),old='2026-01-01',ancient='2024-01-01';
+  await env.withSecurityRulesDisabled(async c=>{await c.database().ref(root).set({events:{e:event},days:{[old]:record,[ancient]:record,[today]:record}});await c.database().ref('tempo/coaching/feed/alice').set({expired:{kind:'meal',date:old},recent:{kind:'meal',date:today}});});
+  const db=env.authenticatedContext('tempo-maintenance',{firebase:{sign_in_provider:'custom'},tempo_retention:true,ownerUid:'alice',before:'2026-09-12',weightBefore:'2025-10-12',seenBefore:Date.now()-30*86400000}).database();
+  await assertSucceeds(db.ref(root+'/days').once('value'));await assertFails(db.ref('tempo/users/bob/days').once('value'));
+  await assertSucceeds(db.ref(root+'/days/'+old).update({items:null,lunch:null}));
+  await assertFails(db.ref(root+'/days/'+old).remove());await assertFails(db.ref(root+'/days/'+old+'/weight').set(75));
+  await assertSucceeds(db.ref(root+'/days/'+ancient).remove());await assertFails(db.ref(root+'/days/'+today).remove());await assertFails(db.ref(root+'/events/e').remove());
+  await assertSucceeds(db.ref('tempo/coaching/feed/alice/expired').remove());await assertFails(db.ref('tempo/coaching/feed/alice/recent').remove());await assertFails(db.ref('tempo/coaching/profiles/alice').set({name:'override',role:'trainer'}));
+});
+
 test('legacy users path keeps its existing owner-only access',async()=>{
   const path='users/alice/existing';
   await assertSucceeds(owner().ref(path).set({value:'legacy'}));
@@ -52,7 +75,7 @@ test('routine editing and deletion remain available without deleting logs',async
   await assertSucceeds(db.ref(root+'/events/d0').remove());
 });
 test('malformed event fields, unknown keys and reversed times are rejected',async()=>{
-  const db=owner();for(const bad of [{...event,day:5},{...event,day:0.5},{...event,start:'99:00'},{...event,end:'18:00'},{...event,cat:'admin'},{...event,title:'x'.repeat(41)},{...event,admin:true}])await assertFails(db.ref(root+'/events/d0').set(bad));
+  const db=owner();for(const bad of [{...event,day:7},{...event,day:0.5},{...event,start:'99:00'},{...event,end:'18:00'},{...event,cat:'admin'},{...event,title:'x'.repeat(41)},{...event,admin:true}])await assertFails(db.ref(root+'/events/d0').set(bad));
   await assertSucceeds(db.ref(root+'/events/d0').set({...event,start:'23:30',end:'24:00'}));
 });
 test('records validate dates, numeric weight, boolean habits and meal length',async()=>{
@@ -99,6 +122,20 @@ async function connectedPair(){
 }
 const meal=()=>({kind:'meal',authorUid:'alice',authorName:'회원',date:'2026-10-12',text:'점심',meal:'lunch',createdAt:Date.now()});
 const comment=()=>({kind:'comment',authorUid:'coach',authorName:'트레이너',date:'2026-10-12',text:'코멘트',mealId:'meal-1',createdAt:Date.now()});
+
+test('custom food library is private, bounded per entry, editable and independent of retained logs',async()=>{
+  const {member,trainer}=await connectedPair(),path='tempo/users/alice/foods/shake',food={name:'내 쉐이크',amount:250,unit:'ml',calories:180,updatedAt:Date.now()};
+  await assertSucceeds(member.ref(path).set(food));
+  await assertSucceeds(member.ref(path).update({calories:190}));
+  await assertFails(trainer.ref(path).once('value'));
+  await assertFails(client('bob').ref(path).set(food));
+  await assertFails(member.ref(path).set({...food,amount:0}));
+  await assertFails(member.ref(path).set({...food,calories:10001}));
+  await assertFails(member.ref(path).set({...food,unit:'invalid'}));
+  const maintenance=env.authenticatedContext('tempo-maintenance',{firebase:{sign_in_provider:'custom'},tempo_retention:true,ownerUid:'alice',before:'2026-09-12',weightBefore:'2025-10-12',seenBefore:Date.now()}).database();
+  await assertFails(maintenance.ref(path).remove());
+  await assertSucceeds(member.ref(path).remove());
+});
 test('coaching profiles are owner-only, validate roles and reject extra fields',async()=>{
   const db=client('alice'),path=coachRoot+'/profiles/alice';
   await assertSucceeds(db.ref(path).set({role:'member',name:'회원'}));

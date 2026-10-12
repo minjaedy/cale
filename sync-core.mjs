@@ -13,7 +13,7 @@ export function applyPatch(data, patch) {
   return result;
 }
 export function cleanEvent(event) {
-  return {day:event.day,title:event.title,start:event.start,end:event.end==='00:00'?'24:00':event.end,cat:event.cat,note:event.note||''};
+  return {day:event.day,title:event.title,start:event.start,end:event.end==='00:00'?'24:00':event.end,cat:event.cat,note:event.note||'',...(event.seriesId?{seriesId:event.seriesId}:{})};
 }
 export function eventDiff(before, after) {
   const prev = Object.fromEntries(before.map(e=>[e.id,cleanEvent(e)]));
