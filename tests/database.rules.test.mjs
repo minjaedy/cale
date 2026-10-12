@@ -72,3 +72,87 @@ test('clearing one weight is allowed without deleting the dated record',async()=
   const db=owner();await db.ref(root+'/days/2026-10-12').set(record);
   await assertSucceeds(db.ref(root+'/days/2026-10-12/weight').remove());
 });
+
+const coachRoot='tempo/coaching';
+test('every event completion is independent, persistent and owner-only',async()=>{
+  const db=owner(),path=root+'/days/2026-10-12';
+  await assertSucceeds(db.ref(path).set({updatedAt:Date.now(),completed:{d0:true,d1:false,d2:true},items:{str:true}}));
+  await assertSucceeds(db.ref(path).update({'completed/d1':true,updatedAt:{'.sv':'timestamp'}}));
+  const saved=(await db.ref(path).once('value')).val();
+  if(!saved.completed.d0||!saved.completed.d1||!saved.completed.d2||!saved.items.str)throw Error('Independent completion lost');
+  await assertFails(other().ref(path+'/completed/d0').set(false));
+  await assertFails(db.ref(path+'/completed/d0').set('true'));
+  await assertFails(db.ref(path+'/completed/bad key').set(true));
+});
+const client=uid=>env.authenticatedContext(uid,{firebase:{sign_in_provider:'google.com'}}).database();
+const code='a'.repeat(32);
+async function connectedPair(){
+  const member=client('alice'),trainer=client('coach');
+  await member.ref(coachRoot+'/profiles/alice').set({role:'member',name:'회원'});
+  await trainer.ref(coachRoot+'/profiles/coach').set({role:'trainer',name:'트레이너'});
+  const invitation={member:'alice',name:'회원',expiresAt:Date.now()+3600000};
+  await member.ref(coachRoot+'/invites/'+code).set(invitation);
+  await trainer.ref(coachRoot+'/invites/'+code).set({...invitation,claimedBy:'coach'});
+  await trainer.ref(coachRoot+'/links/alice/coach').set({code,memberName:'회원',trainerName:'트레이너',createdAt:Date.now()});
+  await trainer.ref(coachRoot+'/roster/coach/alice').set(true);
+  return {member,trainer,invitation};
+}
+const meal=()=>({kind:'meal',authorUid:'alice',authorName:'회원',date:'2026-10-12',text:'점심',meal:'lunch',createdAt:Date.now()});
+const comment=()=>({kind:'comment',authorUid:'coach',authorName:'트레이너',date:'2026-10-12',text:'코멘트',mealId:'meal-1',createdAt:Date.now()});
+test('coaching profiles are owner-only, validate roles and reject extra fields',async()=>{
+  const db=client('alice'),path=coachRoot+'/profiles/alice';
+  await assertSucceeds(db.ref(path).set({role:'member',name:'회원'}));
+  await assertFails(client('bob').ref(path).once('value'));
+  await assertFails(db.ref(path).set({role:'admin',name:'회원'}));
+  await assertFails(db.ref(path).set({role:'member',name:'회원',admin:true}));
+});
+test('private invite connects one trainer and supports interrupted setup retry',async()=>{
+  const {member,trainer,invitation}=await connectedPair();
+  await assertFails(trainer.ref(coachRoot+'/invites').once('value'));
+  await assertSucceeds(trainer.ref(coachRoot+'/invites/'+code).set({...invitation,claimedBy:'coach'}));
+  await client('bob').ref(coachRoot+'/profiles/bob').set({role:'trainer',name:'다른 트레이너'});
+  await assertFails(client('bob').ref(coachRoot+'/invites/'+code).set({...invitation,claimedBy:'bob'}));
+  await assertFails(client('bob').ref(coachRoot+'/links/alice/bob').set({code,memberName:'회원',trainerName:'다른 트레이너',createdAt:Date.now()}));
+  await assertSucceeds(member.ref(coachRoot+'/links/alice').once('value'));
+  await assertSucceeds(trainer.ref(coachRoot+'/roster/coach').once('value'));
+});
+test('trainer cannot connect without an unexpired claimed invite',async()=>{
+  const trainer=client('coach');await trainer.ref(coachRoot+'/profiles/coach').set({role:'trainer',name:'코치'});
+  const link={code,memberName:'회원',trainerName:'코치',createdAt:Date.now()};
+  await assertFails(trainer.ref(coachRoot+'/links/alice/coach').set(link));
+  await env.withSecurityRulesDisabled(c=>c.database().ref(coachRoot+'/invites/'+code).set({member:'alice',name:'회원',claimedBy:'coach',expiresAt:Date.now()-1000}));
+  await assertFails(trainer.ref(coachRoot+'/links/alice/coach').set(link));
+});
+test('meals and comments are shared only with the linked pair and remain immutable',async()=>{
+  const {member,trainer}=await connectedPair();
+  const feed=coachRoot+'/feed/alice';await assertSucceeds(member.ref(feed+'/meal-1').set(meal()));
+  await assertSucceeds(trainer.ref(feed+'/comment-1').set(comment()));
+  await assertSucceeds(member.ref(feed).once('value'));await assertSucceeds(trainer.ref(feed).once('value'));
+  await assertFails(client('bob').ref(feed).once('value'));
+  await assertFails(member.ref(feed+'/meal-1/text').set('changed'));
+  await assertFails(member.ref(feed+'/meal-1').remove());await assertFails(trainer.ref(feed+'/comment-1').remove());
+  await assertFails(member.ref(feed+'/fake').set(comment()));
+  await assertFails(trainer.ref(feed+'/other').set({...comment(),mealId:'missing'}));
+  await assertFails(trainer.ref(feed+'/wrong-date').set({...comment(),date:'2026-10-11'}));
+});
+test('revoking a link immediately removes trainer feed access and posting',async()=>{
+  const {member,trainer}=await connectedPair();const feed=coachRoot+'/feed/alice';await member.ref(feed+'/meal-1').set(meal());
+  await assertSucceeds(member.ref().update({[coachRoot+'/links/alice/coach']:null,[coachRoot+'/roster/coach/alice']:null,[coachRoot+'/invites/'+code]:null}));
+  await assertFails(trainer.ref(feed).once('value'));await assertFails(trainer.ref(feed+'/c1').set(comment()));
+  await assertSucceeds(member.ref(feed).once('value'));
+});
+test('feed rejects oversized, malformed and forged records, and seen state stays private',async()=>{
+  const {member}=await connectedPair();let n=0;for(const value of [{...meal(),text:'x'.repeat(301)},{...meal(),authorUid:'coach'},{...meal(),admin:true},{...meal(),mealId:'fake'},{...meal(),createdAt:1}])await assertFails(member.ref(coachRoot+'/feed/alice/m'+n++).set(value));
+  await assertSucceeds(member.ref(coachRoot+'/seen/alice/m1').set(true));
+  await assertFails(client('coach').ref(coachRoot+'/seen/alice').once('value'));
+  await assertFails(client('coach').ref(coachRoot+'/seen/alice/m1').set(true));
+});
+test('service claims can read only required coaching paths and cannot write or read personal logs',async()=>{
+  const {member}=await connectedPair();await member.ref(coachRoot+'/feed/alice/meal-1').set(meal());
+  const service=env.authenticatedContext('tempo-service',{firebase:{sign_in_provider:'custom'},tempo_service:true}).database();
+  for(const path of ['profiles/coach','links/alice','feed/alice'])await assertSucceeds(service.ref(coachRoot+'/'+path).once('value'));
+  await assertFails(service.ref(coachRoot+'/profiles/coach').set({role:'member',name:'server'}));
+  await assertFails(service.ref(coachRoot+'/feed/alice/meal-1').remove());
+  await assertFails(service.ref('tempo/users/alice').once('value'));
+  await assertFails(service.ref(coachRoot+'/invites/'+code).once('value'));
+});

@@ -1,0 +1,16 @@
+{
+  "name": "tempo-coach",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "triggers": {"crons": ["* * * * *"]},
+  "d1_databases": [{"binding":"DB","database_name":"tempo-coach","database_id":"49fe9ec8-fa05-4551-8592-d1d6eebe80a8"}],
+  "vars": {
+    "APP_ORIGIN":"https://minjaedy.github.io",
+    "APP_URL":"https://minjaedy.github.io/cale/",
+    "FIREBASE_PROJECT":"cale-b2c40",
+    "FIREBASE_DATABASE":"https://cale-b2c40-default-rtdb.firebaseio.com",
+    "FIREBASE_API_KEY":"AIzaSyB7EaKe-_A6Pg0OqbmnsXaj5SFBtds2FEw"
+  }
+}

@@ -87,6 +87,12 @@
               },
               "$other": {
                 ".validate": false
+              },
+              "completed": {
+                ".validate": "newData.hasChildren()",
+                "$eventId": {
+                  ".validate": "$eventId.matches(/^[a-zA-Z0-9_-]{1,100}$/) && newData.isBoolean()"
+                }
               }
             }
           },
@@ -94,6 +100,128 @@
             "initialized": {
               ".write": "auth != null && auth.uid === $uid && auth.token.firebase.sign_in_provider !== 'anonymous' && newData.val() === true",
               ".validate": "newData.val() === true"
+            }
+          }
+        }
+      },
+      "coaching": {
+        "profiles": {
+          "$uid": {
+            ".read": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid) || (auth != null && auth.token.tempo_service === true)",
+            ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid && newData.exists()",
+            ".validate": "newData.hasChildren(['role','name'])",
+            "role": {
+              ".validate": "newData.val() === 'member' || newData.val() === 'trainer'"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "invites": {
+          "$code": {
+            ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true",
+            ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && ((!data.exists() && newData.child('member').val() === auth.uid && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'member') || (data.exists() && !newData.exists() && (data.child('member').val() === auth.uid || data.child('claimedBy').val() === auth.uid)) || (data.exists() && (!data.child('claimedBy').exists() || data.child('claimedBy').val() === auth.uid) && data.child('expiresAt').val() > now && data.child('member').val() !== auth.uid && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer' && newData.child('claimedBy').val() === auth.uid && newData.child('member').val() === data.child('member').val() && newData.child('name').val() === data.child('name').val() && newData.child('expiresAt').val() === data.child('expiresAt').val()))",
+            ".validate": "$code.matches(/^[a-f0-9]{32}$/) && newData.hasChildren(['member','name','expiresAt'])",
+            "member": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+            },
+            "expiresAt": {
+              ".validate": "newData.isNumber() && newData.val() > now && newData.val() <= now+86460000"
+            },
+            "claimedBy": {
+              ".validate": "newData.isString() && newData.val() === auth.uid"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "links": {
+          "$member": {
+            ".read": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $member) || (auth != null && auth.token.tempo_service === true)",
+            "$trainer": {
+              ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $trainer",
+              ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && ((!newData.exists() && (auth.uid === $member || auth.uid === $trainer)) || (!data.exists() && auth.uid === $trainer && $member !== $trainer && root.child('tempo/coaching/invites').child(newData.child('code').val()).child('member').val() === $member && root.child('tempo/coaching/invites').child(newData.child('code').val()).child('claimedBy').val() === auth.uid && root.child('tempo/coaching/invites').child(newData.child('code').val()).child('expiresAt').val() > now && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer'))",
+              ".validate": "newData.hasChildren(['code','memberName','trainerName','createdAt'])",
+              "code": {
+                ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)"
+              },
+              "memberName": {
+                ".validate": "newData.val() === root.child('tempo/coaching/invites').child(newData.parent().child('code').val()).child('name').val()"
+              },
+              "trainerName": {
+                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+              },
+              "createdAt": {
+                ".validate": "newData.isNumber() && newData.val() <= now+10000 && newData.val() >= now-60000"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          }
+        },
+        "roster": {
+          "$uid": {
+            ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid",
+            "$member": {
+              ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && ((!newData.exists() && (auth.uid === $uid || auth.uid === $member)) || (auth.uid === $uid && root.child('tempo/coaching/links').child($member).child($uid).exists() && newData.val() === true))",
+              ".validate": "newData.val() === true"
+            }
+          }
+        },
+        "feed": {
+          "$member": {
+            ".read": "(auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $member) || (auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') || (auth != null && auth.token.tempo_service === true)",
+            ".indexOn": [
+              "createdAt"
+            ],
+            "$id": {
+              ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && !data.exists() && newData.exists() && newData.child('authorUid').val() === auth.uid && ((auth.uid === $member && newData.child('kind').val() === 'meal') || ((auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && root.child('tempo/coaching/links').child($member).child(auth.uid).exists() && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer') && newData.child('kind').val() === 'comment' && root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('kind').val() === 'meal' && newData.child('date').val() === root.child('tempo/coaching/feed').child($member).child(newData.child('mealId').val()).child('date').val()))",
+              ".validate": "$id.matches(/^[a-zA-Z0-9_-]{1,128}$/) && newData.hasChildren(['kind','authorUid','authorName','date','text','createdAt']) && ((newData.child('kind').val() === 'meal' && newData.hasChild('meal') && !newData.hasChild('mealId')) || (newData.child('kind').val() === 'comment' && newData.hasChild('mealId') && !newData.hasChild('meal')))",
+              "kind": {
+                ".validate": "newData.val() === 'meal' || newData.val() === 'comment'"
+              },
+              "authorUid": {
+                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
+              },
+              "authorName": {
+                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+              },
+              "date": {
+                ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/)"
+              },
+              "text": {
+                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= (newData.parent().child('kind').val() === 'meal' ? 300 : 600)"
+              },
+              "meal": {
+                ".validate": "newData.val().matches(/^(breakfast|lunch|snack|dinner)$/)"
+              },
+              "mealId": {
+                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
+              },
+              "createdAt": {
+                ".validate": "newData.isNumber() && newData.val() >= now-60000 && newData.val() <= now+10000"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          }
+        },
+        "seen": {
+          "$uid": {
+            ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid",
+            "$id": {
+              ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.uid === $uid",
+              ".validate": "$id.matches(/^[a-zA-Z0-9_-]{1,128}$/) && newData.val() === true"
             }
           }
         }

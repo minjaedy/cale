@@ -12,3 +12,6 @@ syntax-check.js
 qa/
 *.zip
 tempo-backup-*.json
+
+server/.wrangler/
+server/.dev.vars
