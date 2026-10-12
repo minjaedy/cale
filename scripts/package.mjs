@@ -1,0 +1,11 @@
+import {readFile,writeFile} from 'node:fs/promises';
+let html=await readFile('index.html','utf8');
+const config=await readFile('firebase-config.js','utf8');
+const core=(await readFile('sync-core.mjs','utf8')).replace(/^export /gm,'');
+let cloud=await readFile('firebase-sync.js','utf8');
+cloud=cloud.replace(/^import \{[^\n]+\} from '\.\/sync-core.mjs';\r?\n/m,'');
+cloud=cloud.replace(/^import (\{[^\n]+\}) from ('https:[^']+');$/gm,'const $1 = await import($2);');
+html=html.replace('<script src="./firebase-config.js"></script>','<script>\n'+config+'\n</script>');
+html=html.replace("import('./firebase-sync.js')","(async()=>{\n"+core+'\n'+cloud+'\n})()');
+await writeFile('dist/TEMPO.html',html);
+console.log('Standalone HTML ready: dist/TEMPO.html');

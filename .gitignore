@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.firebase/
+*-debug.log
+*.log
+*-export-*/
+.env*
+*service-account*.json
+*adminsdk*.json
+routine-calendar.original.html
+syntax-check.js
+qa/
+*.zip
+tempo-backup-*.json

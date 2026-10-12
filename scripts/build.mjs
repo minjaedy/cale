@@ -1,0 +1,10 @@
+import {mkdir,copyFile,writeFile,readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+const files=['index.html','firebase-config.js','firebase-sync.js','sync-core.mjs','manifest.webmanifest','icon-180.png','icon-192.png','icon-512.png'];
+const html=await readFile('index.html','utf8');
+for(const [,script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(script);
+JSON.parse(await readFile('database.rules.json','utf8'));
+await mkdir('dist',{recursive:true});
+for(const file of files)await copyFile(file,'dist/'+file);
+await writeFile('dist/.nojekyll','');
+console.log('TEMPO static build ready: dist/');
