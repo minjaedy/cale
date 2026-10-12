@@ -1,5 +1,16 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-12T10:53:26.337Z",
-  "foods": []
+  "updatedAt": "2026-10-12T10:56:15.306Z",
+  "foods": [
+    {
+      "id": "4357b924828d5d15c19f0f4a70e30eb67145dee775e0ee3064b980cae92cc427",
+      "name": "생수 500ml",
+      "amount": 500,
+      "unit": "ml",
+      "calories": 0,
+      "revision": "448cca8f-e52e-4775-b0e3-5c0b37cd18b2",
+      "updatedAt": 1791802560809,
+      "source": "community"
+    }
+  ]
 }
