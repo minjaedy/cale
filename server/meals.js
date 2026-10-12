@@ -6,7 +6,8 @@ export async function removeMeal(env,person,id,token,read=database){
   const meal=await read(env,path+'/'+id,{token});
   if(meal&&(meal.kind!=='meal'||meal.authorUid!==person.sub))throw problem('직접 등록한 식단만 삭제할 수 있어요.',403);
   // Remove the parent first so a racing trainer cannot create a new comment.
-  await read(env,path+'/'+id,{token,method:'DELETE'});
+  // A retry may find the meal already removed while comments still need cleanup.
+  if(meal)await read(env,path+'/'+id,{token,method:'DELETE'});
   const comments=await read(env,path,{token,query:{orderBy:'mealId',equalTo:id}});
   const ids=[id,...Object.keys(comments||{})];
   if(ids.length>1)await read(env,path,{token,method:'PATCH',body:Object.fromEntries(ids.slice(1).map(k=>[k,null]))});

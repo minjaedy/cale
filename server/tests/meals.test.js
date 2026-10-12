@@ -10,7 +10,9 @@ test('meal deletion removes its parent before all comments, cancels queued notif
     assert.deepEqual((await removeMeal(env,{sub:'member'},'m','token',read)).removed,['m','c']);
     assert.equal(calls[1].method,'DELETE');assert.equal(calls[2].query.equalTo,'m');assert.deepEqual(calls[3].body,{c:null});
     assert.equal(env.sqlite.prepare('SELECT state FROM deliveries').get().state,'skipped');
-    await removeMeal(env,{sub:'member'},'m','token',read);
+    calls.length=0;await removeMeal(env,{sub:'member'},'m','token',read);
+    assert.equal(calls.some(c=>c.method==='DELETE'),false);
+    assert.ok(calls.some(c=>c.query?.equalTo==='m'));assert.ok(calls.some(c=>c.body?.c===null));
     await assert.rejects(()=>removeMeal(env,{sub:'other'},'m','token',async()=>({kind:'meal',authorUid:'member'})),e=>e.status===403);
   }finally{env.sqlite.close()}
 });
