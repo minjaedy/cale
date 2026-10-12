@@ -40,7 +40,8 @@
               "seriesId": {
                 ".validate": "newData.isString() && newData.val().matches(/^[a-zA-Z0-9_-]{1,100}$/)"
               }
-            }
+            },
+            ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.token.tempo_retention !== true && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer' && root.child('tempo/coaching/links').child($uid).child(auth.uid).exists()"
           },
           "days": {
             "$date": {
@@ -68,7 +69,8 @@
                 "$other": {
                   ".validate": false
                 },
-                ".validate": "newData.hasChildren()"
+                ".validate": "newData.hasChildren()",
+                ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.token.tempo_retention !== true && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer' && root.child('tempo/coaching/links').child($uid).child(auth.uid).exists()"
               },
               "weight": {
                 ".validate": "newData.isNumber() && newData.val() >= 30 && newData.val() <= 200"
@@ -95,7 +97,8 @@
                 ".validate": "newData.hasChildren()",
                 "$eventId": {
                   ".validate": "$eventId.matches(/^[a-zA-Z0-9_-]{1,100}$/) && newData.isBoolean()"
-                }
+                },
+                ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && auth.token.tempo_service !== true && auth.token.tempo_retention !== true && root.child('tempo/coaching/profiles').child(auth.uid).child('role').val() === 'trainer' && root.child('tempo/coaching/links').child($uid).child(auth.uid).exists()"
               },
               "weeklyWeight": {
                 ".validate": "newData.isNumber() && newData.val() >= 30 && newData.val() <= 200"

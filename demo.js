@@ -33,6 +33,7 @@ function render(){
 function switchRole(next){if(!window.Tempo.canUpdate){window.Tempo.notify('입력창을 먼저 닫아 주세요.');return}window.TempoAccount.close();role=next;render();ui.enter();if(role==='member')window.Tempo.showPlan();}
 setNutritionActions({saveFood:async(food,id)=>{id=id||crypto.randomUUID();foods[id]={...food,id,updatedAt:Date.now(),source:'community'};setCommunityFoods(foods,Object.keys(foods));queueMicrotask(()=>{$('foodStatus').textContent='체험 저장 · 실제 공용 DB에는 등록하지 않음'})},removeFood:async id=>{delete foods[id];setCommunityFoods(foods,Object.keys(foods))}});
 ui.setActions({
+  schedule:(id,day)=>{const snapshot=window.Tempo.snapshot(),record=snapshot.logs[day]||{};ui.schedule(id&&linked?{member:id,date:day,events:Object.fromEntries(snapshot.events.map(e=>[e.id,e])),completed:record.completed,items:record.items,loading:false}:null)},
   google:switchRole,continue:switchRole,passkey:notice,register:notice,removeKey:notice,
   profile:async(data,next)=>{const value=profileInput(data,next);if(next==='member')profile={...profile,...value};else Object.assign(coachProfile,value);render();ui.enter();return true},
   meal:async data=>{feed[crypto.randomUUID()]={...data,kind:'meal',authorUid:member,authorName:profile.name,createdAt:Date.now()};render();window.Tempo.notify('식단 등록 · 트레이너 화면에서 확인');return true},

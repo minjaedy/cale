@@ -3,6 +3,7 @@ import {onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithCustomTo
 import {startRegistration,startAuthentication} from './passkey-browser.js?v=3';
 import {legacyProfile,profileInput} from './account-core.mjs?v=3';
 import {claimInvite} from './invite-core.mjs?v=3';
+import {createScheduleWatcher} from './coach-schedule.mjs?v=3';
 const SERVER='https://tempo-coach.couple-private-push.workers.dev';
 import {cutoffs} from './retention-core.mjs?v=3';
 import {setNutritionFeed,setCommunityFoods,upsertCommunityFood,removeCommunityFood,setNutritionActions} from './nutrition-ui.js?v=3';
@@ -13,7 +14,14 @@ const outboxKey=()=> 'tempo-coaching-outbox:'+user.uid;
 const name=()=>String(profile.name||user?.displayName||user?.email?.split('@')[0]||'TEMPO').slice(0,60);
 const requireUser=()=>{if(!user)throw Error('먼저 로그인해 주세요.');};
 const requireOnline=()=>{requireUser();if(!connected)throw Error('인터넷에 연결한 뒤 다시 시도해 주세요.');};
-function publish(){ui.update({user,role,profile,connected,links,feeds,seen,pending});window.Tempo.setProfile(profile)}
+let scheduleWatcher,requestedSchedule=null,scheduleKey='';
+function syncSchedule(){
+  const request=requestedSchedule,allowed=user&&role==='trainer'&&request&&links[request.member]&&/^\d{4}-\d{2}-\d{2}$/.test(request.date)&&request.date>=cutoffs().before;
+  const key=allowed?user.uid+':'+request.member+':'+request.date:'';
+  if(key===scheduleKey)return;scheduleKey=key;
+  if(key)scheduleWatcher.watch(request.member,request.date);else{scheduleWatcher?.clear();ui.schedule(null)}
+}
+function publish(){ui.update({user,role,profile,connected,links,feeds,seen,pending});window.Tempo.setProfile(profile);syncSchedule()}
 async function api(path,data={},authenticated=true){
   const token=authenticated?await auth.currentUser?.getIdToken():null;
   if(authenticated&&!token)throw Error('먼저 로그인해 주세요.');
@@ -22,7 +30,7 @@ async function api(path,data={},authenticated=true){
 }
 const errorText=e=>['NotAllowedError','AbortError'].includes(e?.name)?'인증을 취소했어요. 다시 시도하거나 Google로 입장해 주세요.':e?.code==='auth/popup-closed-by-user'?'로그인 창을 닫았어요.':e?.code==='auth/popup-blocked'?'Safari에서 팝업을 허용한 뒤 다시 눌러 주세요.':e?.code?.includes('permission')||e?.message?.includes('PERMISSION_DENIED')?'연결 권한이 없거나 초대 코드가 만료됐어요.':e?.message||'연결을 확인하고 다시 시도해 주세요.';
 async function action(fn){if(busy)return;busy=true;ui.entryBusy(true);try{return await fn()}catch(e){ui.status(errorText(e));window.Tempo.notify(errorText(e));return false}finally{busy=false;ui.entryBusy(false)}}
-function clearListeners(){nutritionStop?.();nutritionStop=null;setNutritionFeed({});unsubs.forEach(fn=>fn());unsubs=[];for(const fn of feedSubs.values())fn();for(const fn of linkSubs.values())fn();feedSubs.clear();linkSubs.clear();links={};feeds={};seen={};}
+function clearListeners(){scheduleWatcher?.clear();scheduleKey='';ui?.schedule(null);nutritionStop?.();nutritionStop=null;setNutritionFeed({});unsubs.forEach(fn=>fn());unsubs=[];for(const fn of feedSubs.values())fn();for(const fn of linkSubs.values())fn();feedSubs.clear();linkSubs.clear();links={};feeds={};seen={};}
 function feed(member){
   if(feedSubs.has(member))return;const mine=generation;let active=true,revision=0;
   const stop=onValue(query(ref(db,'tempo/coaching/feed/'+member),orderByChild('createdAt'),limitToLast(limit)),async s=>{
@@ -97,11 +105,13 @@ async function syncReminders(force=false,preference){
 }
 export async function start(context){
   ({auth,db}=context);ui=await window.TempoCoachingUIReady;
+  scheduleWatcher=createScheduleWatcher((path,next,error)=>onValue(ref(db,path),s=>next(s.val()),error),value=>ui.schedule(value));
   setNutritionActions({
     saveFood:async(food,id)=>{requireOnline();const result=await api('/foods/save',{food,...(id?{id}:{})});foodRevision++;upsertCommunityFood(result.food);void refreshCommunity();},
     removeFood:async id=>{requireOnline();await api('/foods/remove',{id});foodRevision++;removeCommunityFood(id);void refreshCommunity();}
   });
   ui.setActions({
+    schedule:(member,date)=>{requestedSchedule=member?{member,date}:null;syncSchedule()},
     google:next=>action(async()=>{entryIntent=next;try{const result=auth.currentUser?{user:auth.currentUser}:await signInWithPopup(auth,new GoogleAuthProvider());await loading;user=result.user;await setRole(next);}finally{entryIntent=null}}),
     continue:next=>action(async()=>{await loading;await setRole(next)}),
     profile:(data,next,first)=>action(async()=>{requireOnline();const patch=profileInput(data,next);if(profile.role&&profile.role!==next)throw Error('계정 유형은 변경할 수 없어요.');const uid=user.uid,mine=generation;await update(ref(db,'tempo/coaching/profiles/'+uid),patch);if(mine!==generation)return false;profile={...profile,...patch};role=next;publish();if(first)ui.enter();window.Tempo.notify(first?'등록 완료':'저장 완료');return true;}),
@@ -109,7 +119,7 @@ export async function start(context){
     invite:()=>action(async()=>{requireOnline();if(inviteCode)await set(ref(db,'tempo/coaching/invites/'+inviteCode),null);inviteCode=crypto.randomUUID().replaceAll('-','');await set(ref(db,'tempo/coaching/invites/'+inviteCode),{member:user.uid,name:name(),expiresAt:Date.now()+offset+86400000});ui.invite(inviteCode);}),
     cancelInvite:()=>action(async()=>{requireOnline();if(inviteCode)await set(ref(db,'tempo/coaching/invites/'+inviteCode),null);inviteCode='';ui.invite(null);}),
     connect:code=>action(async()=>{requireOnline();if(role!=='trainer')throw Error('트레이너 계정으로 로그인해 주세요.');code=code.replace(/\s/g,'').toLowerCase();if(!/^[a-f0-9]{32}$/.test(code))throw Error('초대 코드 32자리를 확인해 주세요.');const uid=user.uid,inv=ref(db,'tempo/coaching/invites/'+code);const v=await claimInvite({read:async()=>(await get(inv)).val(),write:value=>set(inv,value)},uid,()=>Date.now()+offset);const path='tempo/coaching/links/'+v.member+'/'+uid;if(!(await get(ref(db,path))).exists())await set(ref(db,path),{code,memberName:v.name,trainerName:name(),createdAt:serverTimestamp()});await set(ref(db,'tempo/coaching/roster/'+uid+'/'+v.member),true);await set(inv,null);document.getElementById('inviteInput').value='';ui.status('회원 연결 완료');window.Tempo.notify('회원 연결 완료');}),
-    revoke:id=>action(async()=>{requireOnline();if(!confirm('연결을 해제할까요? 트레이너는 더 이상 이 회원의 식단을 볼 수 없어요. 기존 코멘트는 남아요.'))return;const member=role==='trainer'?id:user.uid,trainer=role==='trainer'?user.uid:id,code=links[id]?.code;const patch={['tempo/coaching/links/'+member+'/'+trainer]:null,['tempo/coaching/roster/'+trainer+'/'+member]:null};if(code&&(await get(ref(db,'tempo/coaching/invites/'+code))).exists())patch['tempo/coaching/invites/'+code]=null;await update(ref(db),patch);}),
+    revoke:id=>action(async()=>{requireOnline();if(!confirm('연결을 해제할까요? 트레이너는 더 이상 이 회원의 일정과 식단을 볼 수 없어요. 기존 코멘트는 남아요.'))return;const member=role==='trainer'?id:user.uid,trainer=role==='trainer'?user.uid:id,code=links[id]?.code;const patch={['tempo/coaching/links/'+member+'/'+trainer]:null,['tempo/coaching/roster/'+trainer+'/'+member]:null};if(code&&(await get(ref(db,'tempo/coaching/invites/'+code))).exists())patch['tempo/coaching/invites/'+code]=null;await update(ref(db),patch);}),
     meal:data=>action(()=>queue({...data,kind:'meal',member:user?.uid})),comment:data=>action(()=>queue({...data,kind:'comment'})),
     deleteMeal:id=>action(async()=>{requireOnline();if(!confirm('식단을 삭제할까요?\n코멘트와 이모티콘도 함께 삭제됩니다.'))return;const result=await api('/meal/remove',{id});for(const key of result.removed||[])delete feeds[user.uid]?.[key];publish();window.Tempo.notify('식단 삭제 완료');}),
     read:ids=>action(async()=>{requireUser();const patch=Object.fromEntries(ids.map(id=>['tempo/coaching/seen/'+user.uid+'/'+id,Date.now()+offset]));if(ids.length)await update(ref(db),patch);}),
@@ -140,11 +150,11 @@ export async function start(context){
       if(mine!==generation)return;void api('/account/ready').catch(()=>{});sessionReady=true;connectListeners();void refreshCommunity();publish();if(!entryIntent&&!ui.hasEntryChoice()){if(profile.registered&&role==='member')ui.enter();else if(profile.role&&!profile.registered)ui.registration(role);}void refreshPush();void flush();void syncReminders();
     })().catch(e=>ui.status(errorText(e)));
   });
-  async function presence(){if(!user)return;const active=connected&&ui.isEntered()&&document.visibilityState==='visible'&&window.Tempo.currentPage==='coaching';try{await api('/presence',{active,member:role==='member'?user.uid:ui.viewingMember()})}catch{}}
+  async function presence(){if(!user)return;const active=connected&&ui.isEntered()&&document.visibilityState==='visible'&&window.Tempo.currentPage==='coaching'&&ui.viewingMeals();try{await api('/presence',{active,member:role==='member'?user.uid:ui.viewingMember()})}catch{}}
   setInterval(()=>{if(document.visibilityState==='visible')void refreshCommunity()},60000);void refreshCommunity();
   setInterval(()=>{void presence();void flush();void syncReminders()},20000);
   window.addEventListener('tempo-synced',()=>void syncReminders());
-  for(const event of ['visibilitychange','tempo-page','tempo-entry'])window.addEventListener(event,()=>{void presence();if(document.visibilityState==='visible'){void refreshPush();void syncReminders()}});
+  for(const event of ['visibilitychange','tempo-page','tempo-entry','tempo-coach-view'])window.addEventListener(event,()=>{void presence();if(document.visibilityState==='visible'){void refreshPush();void syncReminders()}});
   document.addEventListener('visibilitychange',()=>void presence());
   window.TempoCoach={get pending(){return pending.length>0||busy},get hasDraft(){return ui.hasDraft()},beforeLogout:async()=>{if(pending.length)throw Error('전송 대기 중인 내용이 있어요.');await disablePush();}};
 }

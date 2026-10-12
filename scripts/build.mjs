@@ -2,7 +2,7 @@ import {demoHTML} from './demo-page.mjs';
 import {mkdir,copyFile,writeFile,readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createHash} from 'node:crypto';
-const files=['demo.js','routine-plan.js','calendar-core.mjs','index.html','styles.css','coaching.css','coaching-ui.js','coaching.js','invite-core.mjs','passkey-browser.js','updates.js','firebase-config.js','firebase-sync.js','sync-core.mjs','account-core.mjs','account-ui.js','stickers.js','nutrition-core.mjs','nutrition-ui.js','retention-core.mjs','custom-foods.mjs','food-catalog.json','manifest.webmanifest','icon.svg','icon-180.png','icon-192.png','icon-512.png','icon-1024.png','sw.js','offline.html'];
+const files=['demo.js','routine-plan.js','calendar-core.mjs','index.html','styles.css','coaching.css','coaching-ui.js','coaching.js','invite-core.mjs','coach-schedule.mjs','passkey-browser.js','updates.js','firebase-config.js','firebase-sync.js','sync-core.mjs','account-core.mjs','account-ui.js','stickers.js','nutrition-core.mjs','nutrition-ui.js','retention-core.mjs','custom-foods.mjs','food-catalog.json','manifest.webmanifest','icon.svg','icon-180.png','icon-192.png','icon-512.png','icon-1024.png','sw.js','offline.html'];
 const html=await readFile('index.html','utf8');
 for(const [,script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(script);
 JSON.parse(await readFile('database.rules.json','utf8'));

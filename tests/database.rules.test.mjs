@@ -175,6 +175,26 @@ async function connectedPair(){
 const meal=()=>({kind:'meal',authorUid:'alice',authorName:'회원',date:'2026-10-12',text:'점심',meal:'lunch',createdAt:Date.now()});
 const comment=()=>({kind:'comment',authorUid:'coach',authorName:'트레이너',date:'2026-10-12',text:'코멘트',mealId:'meal-1',createdAt:Date.now()});
 
+test('linked trainer reads only routine templates and selected-date completion, never personal records or writes',async()=>{
+  const {member,trainer}=await connectedPair(),day=root+'/days/2026-10-12';
+  await member.ref(root+'/events/d0').set(event);
+  await member.ref(day).set({...record,completed:{d0:true},weeklyWeight:85});
+  for(const path of [root+'/events',day+'/completed',day+'/items'])await assertSucceeds(trainer.ref(path).get());
+  for(const path of [root,root+'/days',day,day+'/weeklyWeight',day+'/weight',day+'/lunch',root+'/meta'])await assertFails(trainer.ref(path).get());
+  await assertFails(trainer.ref(root+'/events/d0/title').set('변경'));
+  await assertFails(trainer.ref(day+'/completed/d0').set(false));
+  await assertFails(trainer.ref(day+'/items/str').set(true));
+  await assertFails(trainer.ref(root+'/events/d0').remove());
+  const stranger=client('unlinked');await stranger.ref(coachRoot+'/profiles/unlinked').set({name:'다른 코치',role:'trainer'});
+  for(const path of [root+'/events',day+'/completed',day+'/items']){
+    await assertFails(stranger.ref(path).get());
+    await assertFails(env.unauthenticatedContext().database().ref(path).get());
+    await assertFails(env.authenticatedContext('anon',{firebase:{sign_in_provider:'anonymous'}}).database().ref(path).get());
+  }
+  await member.ref(coachRoot+'/links/alice/coach').remove();
+  for(const path of [root+'/events',day+'/completed',day+'/items'])await assertFails(client('coach').ref(path).get());
+});
+
 test('custom food library is private, bounded per entry, editable and independent of retained logs',async()=>{
   const {member,trainer}=await connectedPair(),path='tempo/users/alice/foods/shake',food={name:'내 쉐이크',amount:250,unit:'ml',calories:180,updatedAt:Date.now()};
   await assertSucceeds(member.ref(path).set(food));
