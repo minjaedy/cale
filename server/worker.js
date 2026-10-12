@@ -49,6 +49,11 @@ export default {
       if(path==='/foods/catalog'&&request.method==='GET')return answer(await communityCatalog(env));
       if(!['POST','DELETE'].includes(request.method))throw problem('지원하지 않는 요청이에요.',405);
       const b=await readBody(request,path==='/foods/sync/ack'?128000:16000);
+      if(path==='/jobs/run'){
+        await githubIdentity((request.headers.get('Authorization')||'').replace(/^Bearer /,''));
+        await runScheduled({scheduledTime:Math.floor(Date.now()/900000)*900000},env);
+        return answer({ok:true});
+      }
       if(path==='/foods/sync/pending'||path==='/foods/sync/ack'){
         await githubIdentity((request.headers.get('Authorization')||'').replace(/^Bearer /,''));
         return answer(path.endsWith('/pending')?await pendingFoods(env):await acknowledgeFoods(env,b));
@@ -82,5 +87,14 @@ export default {
       throw problem('지원하지 않는 요청이에요.',404);
     }catch(error){return answer({error:error.status?error.message:'처리하지 못했어요. 연결을 확인하고 다시 시도해 주세요.'},error.status||500);}
   },
-  async scheduled(event,env,ctx){ctx.waitUntil((async()=>{await scheduleRoutines(env);await deliver(env);await maintenanceTick(env);if(new Date(event.scheduledTime).getUTCMinutes()%15===0){await cleanup(env);await cleanupInvites(env)}})());}
+  async scheduled(event,env){await runScheduled(event,env);}
 };
+export async function runScheduled(event,env,jobs={scheduleRoutines,deliver,maintenanceTick,cleanup,cleanupInvites}){
+  const stages=['scheduleRoutines','deliver','maintenanceTick'];
+  if(new Date(event.scheduledTime).getUTCMinutes()%15===0)stages.push('cleanup','cleanupInvites');
+  const failed=[];
+  for(const stage of stages){try{await jobs[stage](env)}catch(error){failed.push(stage);console.error('Scheduled task failed:',stage,String(error?.message||'unknown').slice(0,120))}}
+  // Overwrite one status row; no personal data or growing execution log.
+  await sql(env,"INSERT INTO job_status(name,last_run,failed) VALUES('minute',?,?) ON CONFLICT(name) DO UPDATE SET last_run=excluded.last_run,failed=excluded.failed",Date.now(),failed.join(',')).run();
+  if(failed.length)throw Error('Scheduled tasks failed: '+failed.join(','));
+}

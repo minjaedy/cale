@@ -21,3 +21,6 @@ jobs:
       - run: node scripts/sync-foods.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Check scheduled maintenance
+        if: always()
+        run: node scripts/run-jobs.mjs

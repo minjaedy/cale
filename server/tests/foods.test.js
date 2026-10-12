@@ -34,3 +34,10 @@ test('food publishing trusts only the signed repository workflow on main',async(
   await githubIdentity(await token({}),publicKey);
   for(const extra of [{repository:'other/cale'},{repository_id:'0'},{ref:'refs/pull/1/merge'},{workflow_ref:'minjaedy/cale/.github/workflows/untrusted.yml@refs/heads/main'},{event_name:'pull_request'}])await assert.rejects(()=>token(extra).then(t=>githubIdentity(t,publicKey)));
 });
+test('catalog retries when GitHub publication completes during its read',async()=>{
+  const env=environment();try{
+    const first=await saveCommunity(env,'member',{food}),snapshot=await pendingFoods(env),commit='c'.repeat(40),base={[first.food.id]:first.food};let reads=0;
+    const result=await communityCatalog(env,null,async(_,rev)=>{reads++;if(!rev){await acknowledgeFoods(env,{commit,changes:snapshot.changes},async()=>base);return {}}return structuredClone(base)});
+    assert.equal(reads,2);assert.equal(result.foods[first.food.id].calories,180);assert.equal(result.commit,commit);
+  }finally{env.sqlite.close()}
+});

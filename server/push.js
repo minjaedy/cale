@@ -22,6 +22,7 @@ export async function deliver(env,onlyMessage=null,services={database,fetch}){
   // Bound the per-invocation queries to the Workers/D1 free-plan budget.
   const jobs=(await sql(env,"SELECT * FROM deliveries WHERE state!='sent' AND state!='skipped' AND attempts<8 AND next_at<=? AND lease_until<? AND (? IS NULL OR message_id=?) ORDER BY created_at LIMIT 3",now,now,onlyMessage,onlyMessage).all()).results;
   for(const job of jobs){
+    let phase='prepare';
     const claim=await sql(env,"UPDATE deliveries SET state='sending',lease_until=?,attempts=attempts+1 WHERE id=? AND lease_until<? AND state NOT IN ('sent','skipped')",now+60000,job.id,now).run();
     if(!claim.meta.changes)continue;
     try{
@@ -37,12 +38,15 @@ export async function deliver(env,onlyMessage=null,services={database,fetch}){
       if(!device||!link||(['meal','comment'].includes(job.kind)&&presence&&(presence.member===job.member||presence.member==='*'))){await sql(env,"UPDATE deliveries SET state='skipped',lease_until=0 WHERE id=?",job.id).run();continue;}
       const title=job.kind==='meal'?'새 식단':job.kind==='comment'?'새 코멘트':job.kind==='routine'?'루틴 시작':'알림 테스트';
       const payload={title,body:job.kind==='test'?'TEMPO 알림 연결 완료':job.kind==='routine'?job.title:'코칭에서 확인',member:job.member,screen:job.kind==='routine'?'routine':'coaching',tag:'tempo-'+job.message_id};
+      phase='encrypt';
       const req=webpush.generateRequestDetails(JSON.parse(device.subscription),JSON.stringify(payload),{TTL:86400,vapidDetails:{subject:env.APP_URL,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY}});
+      phase='send';
       const r=await services.fetch(req.endpoint,{method:'POST',headers:req.headers,body:req.body,redirect:'manual',signal:AbortSignal.timeout(12000)});
       if(r.status===404||r.status===410){await sql(env,'DELETE FROM devices WHERE id=?',device.id).run();await sql(env,"UPDATE deliveries SET state='skipped',lease_until=0 WHERE id=?",job.id).run();continue;}
-      if(!r.ok)throw Error('Push delivery failed');
+      if(!r.ok)throw Error('Push delivery HTTP '+r.status+' '+(await r.text()).replace(/https?:\/\/\S+|[A-Za-z0-9_=-]{50,}/g,'[redacted]').slice(0,100));
       await sql(env,"UPDATE deliveries SET state='sent',lease_until=0 WHERE id=?",job.id).run();
-    }catch{
+    }catch(error){
+      console.error('Push failure',phase,String(error?.message||'unknown').replace(/https?:\/\/\S+|[A-Za-z0-9_=-]{50,}/g,'[redacted]').slice(0,160));
       await sql(env,"UPDATE deliveries SET state='failed',lease_until=0,next_at=? WHERE id=?",Date.now()+Math.min(3600000,30000*2**job.attempts),job.id).run();
     }
   }

@@ -49,8 +49,8 @@ function connectListeners(){
     }));
   }
 }
-let refreshingFoods=false;
-async function refreshCommunity(){if(refreshingFoods)return;refreshingFoods=true;const mine=generation;try{const result=user?await api('/foods/catalog'):await fetch(SERVER+'/foods/catalog',{signal:AbortSignal.timeout(15000)}).then(r=>{if(!r.ok)throw Error();return r.json()});if(mine===generation)setCommunityFoods(result.foods,result.mine||[]);}catch{}finally{refreshingFoods=false}}
+let refreshingFoods=false,foodRevision=0,foodRefreshAgain=false;
+async function refreshCommunity(){if(refreshingFoods){foodRefreshAgain=true;return}refreshingFoods=true;const mine=generation,revision=foodRevision;try{const result=user?await api('/foods/catalog'):await fetch(SERVER+'/foods/catalog',{signal:AbortSignal.timeout(15000)}).then(r=>{if(!r.ok)throw Error();return r.json()});if(mine===generation&&revision===foodRevision)setCommunityFoods(result.foods,result.mine||[]);}catch{}finally{refreshingFoods=false;if(foodRefreshAgain){foodRefreshAgain=false;void refreshCommunity()}}}
 async function setRole(next){
   requireOnline();if(!['member','trainer'].includes(next))throw Error('계정 유형을 선택해 주세요.');
   if(profile.role&&profile.role!==next)throw Error('이 계정은 '+(profile.role==='trainer'?'트레이너':'일반 사용자')+' 계정입니다. 다른 계정은 로그아웃 후 선택해 주세요.');
@@ -97,8 +97,8 @@ async function syncReminders(force=false,preference){
 export async function start(context){
   ({auth,db}=context);ui=await window.TempoCoachingUIReady;
   setNutritionActions({
-    saveFood:async(food,id)=>{requireOnline();const result=await api('/foods/save',{food,...(id?{id}:{})});upsertCommunityFood(result.food);void refreshCommunity();},
-    removeFood:async id=>{requireOnline();await api('/foods/remove',{id});removeCommunityFood(id);void refreshCommunity();}
+    saveFood:async(food,id)=>{requireOnline();const result=await api('/foods/save',{food,...(id?{id}:{})});foodRevision++;upsertCommunityFood(result.food);void refreshCommunity();},
+    removeFood:async id=>{requireOnline();await api('/foods/remove',{id});foodRevision++;removeCommunityFood(id);void refreshCommunity();}
   });
   ui.setActions({
     google:next=>action(async()=>{entryIntent=next;try{const result=auth.currentUser?{user:auth.currentUser}:await signInWithPopup(auth,new GoogleAuthProvider());await loading;user=result.user;await setRole(next);}finally{entryIntent=null}}),
@@ -115,7 +115,7 @@ export async function start(context){
     retry:id=>{pending=pending.map(p=>p.id===id?{...p,error:null}:p);localSet(outboxKey(),pending);publish();void flush();},
     discard:id=>{if(!confirm('아직 전송되지 않은 등록을 취소할까요?'))return;pending=pending.filter(p=>p.id!==id);localSet(outboxKey(),pending);publish();},
     enablePush:()=>{if(!user){ui.status('먼저 로그인해 주세요.');return;}if(!('Notification'in window)){ui.status('아이폰은 홈 화면에 추가한 앱에서 알림을 켜 주세요.');return;}const permission=Notification.requestPermission();void action(()=>enablePush(permission));},
-    disablePush:()=>action(disablePush),testPush:()=>action(async()=>{const sub=await(await registration()).pushManager.getSubscription();if(!sub)throw Error('먼저 알림을 켜 주세요.');const r=await api('/push/test',{endpoint:sub.endpoint});ui.status(r.state==='sent'?'전송 완료 · 알림센터 확인':'전송 대기');}),
+    disablePush:()=>action(disablePush),testPush:()=>action(async()=>{const sub=await(await registration()).pushManager.getSubscription();if(!sub)throw Error('먼저 알림을 켜 주세요.');window.Tempo.notify('알림 전송 중');const r=await api('/push/test',{endpoint:sub.endpoint});const message=r.state==='sent'?'전송 완료 · 알림센터 확인':r.state==='failed'?'전송 실패 · 잠시 후 다시 시도':r.state==='skipped'?'알림 연결 만료 · 알림 다시 켜기':'전송 대기';ui.status(message);window.Tempo.notify(message);}),
     reminders:value=>action(async()=>{requireOnline();if(window.TempoCloud?.pending)throw Error('동기화 완료 후 변경해 주세요.');await syncReminders(true,value);}),
     register:()=>action(async()=>{requireOnline();await freshGoogle();const r=await api('/auth/register/options'),response=await startRegistration({optionsJSON:r.options});await api('/auth/register/verify',{response,challengeId:r.challengeId});localSet('tempo-has-passkey:'+user.uid,true);await listKeys();ui.status('Face ID 등록 완료');}),
     removeKey:id=>action(async()=>{await freshGoogle();await api('/auth/remove',{id});await listKeys();}),

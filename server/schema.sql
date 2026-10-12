@@ -24,3 +24,4 @@ CREATE TABLE IF NOT EXISTS community_foods(id TEXT PRIMARY KEY,owner_hash TEXT N
 CREATE INDEX IF NOT EXISTS foods_pending ON community_foods(dirty,updated_at);
 CREATE INDEX IF NOT EXISTS foods_owner ON community_foods(owner_hash,deleted);
 CREATE TABLE IF NOT EXISTS food_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS job_status(name TEXT PRIMARY KEY,last_run INTEGER NOT NULL,failed TEXT NOT NULL);

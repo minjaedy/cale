@@ -69,7 +69,7 @@ export function mealNutrition(){
   const manual=$('mealCalories').value,summary=dailyNutrition(lastFeed,$('mealDate').value),goal=summary.goal||target()?.goal;
   if(manual!==''){const calories=Number(manual);if(!Number.isFinite(calories)||calories<0||calories>10000)throw Error('칼로리는 0–10,000 사이로 입력해 주세요.');return {calories:Math.round(calories),nutritionComplete:true,nutritionMethod:'manual',...(goal?{calorieGoal:goal}:{})};}
   const estimate=parseFood($('mealText').value,catalog);if(estimate.total>10000)throw Error('음식의 양을 확인해 주세요. 한 번에 10,000 kcal까지 등록할 수 있어요.');
-  return {calories:estimate.total,nutritionComplete:(ready||estimate.items.every(i=>i.custom))&&estimate.complete,nutritionMethod:'catalog-v1',...(goal?{calorieGoal:goal}:{})};
+  return {calories:estimate.total,nutritionComplete:(ready||estimate.items.every(i=>i.custom||i.community))&&estimate.complete,nutritionMethod:'catalog-v1',...(goal?{calorieGoal:goal}:{})};
 }
 export function setNutritionFeed(feed){lastFeed=feed||{};renderNutrition();previewFood();}
 export function resetNutrition(){$('mealCalories').value='';previewFood();}

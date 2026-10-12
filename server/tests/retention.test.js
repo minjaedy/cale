@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {dayRemovals,maintainAccount,registerAccount} from '../retention.js';
 import {environment} from './helpers.js';
-import {messageInput} from '../worker.js';
+import {messageInput,runScheduled} from '../worker.js';
 import {syncRoutine,scheduleRoutines} from '../reminders.js';
 test('cleanup removes daily records together but preserves weights under one year',async()=>{
   const now=Date.parse('2026-10-12T10:00:00Z'),days={'2026-09-01':{weight:80,weeklyWeight:79,lunch:'밥',items:{a:true},completed:{b:true},updatedAt:now},'2024-01-01':{weight:90,updatedAt:1},'2026-10-12':{lunch:'오늘',updatedAt:now}};
@@ -22,5 +22,17 @@ test('Sunday routine is scheduled like weekdays',async()=>{
     await syncRoutine(env,{sub:'member'},{timeZone:'Asia/Seoul'},'token',async()=>({sun:{day:6,start:'09:00',title:'산책',cat:'cardio'}}));
     env.sqlite.prepare('INSERT INTO devices(id,uid,subscription,updated_at) VALUES(?,?,?,?)').run('dev','member','{}',1);
     await scheduleRoutines(env,Date.parse('2026-10-18T00:00:00Z'));assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM deliveries').get().n,1);
+  }finally{env.sqlite.close()}
+});
+test('a push failure does not prevent retention, and minute status stays bounded',async()=>{
+  const env=environment(),called=[];
+  const jobs=Object.fromEntries(['scheduleRoutines','deliver','maintenanceTick','cleanup','cleanupInvites'].map(name=>[name,async()=>{called.push(name);if(name==='deliver')throw Error('Test delivery failure')} ]));
+  try{
+    await assert.rejects(()=>runScheduled({scheduledTime:Date.parse('2026-10-12T10:00:00Z')},env,jobs));
+    assert.deepEqual(called,['scheduleRoutines','deliver','maintenanceTick','cleanup','cleanupInvites']);
+    assert.equal(env.sqlite.prepare('SELECT failed FROM job_status').get().failed,'deliver');
+    jobs.deliver=async()=>{};await runScheduled({scheduledTime:Date.parse('2026-10-12T10:01:00Z')},env,jobs);
+    assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM job_status').get().n,1);
+    assert.equal(env.sqlite.prepare('SELECT failed FROM job_status').get().failed,'');
   }finally{env.sqlite.close()}
 });

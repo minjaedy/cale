@@ -21,7 +21,14 @@ export async function publishedFoods(env,commit){
 }
 async function revision(env){return (await sql(env,"SELECT value FROM food_meta WHERE key='commit'").first())?.value||null;}
 export async function communityCatalog(env,uid,load=publishedFoods){
-  const commit=await revision(env),base=await load(env,commit),rows=(await sql(env,'SELECT id,payload,deleted FROM community_foods WHERE dirty=1 ORDER BY updated_at LIMIT 500').all()).results;
+  let commit,base,rows;
+  // If publishing finishes during the GitHub fetch, retry the new immutable snapshot.
+  for(let attempt=0;attempt<3;attempt++){
+    commit=await revision(env);base=await load(env,commit);
+    rows=(await sql(env,'SELECT id,payload,deleted FROM community_foods WHERE dirty=1 ORDER BY updated_at LIMIT 500').all()).results;
+    if(commit===await revision(env))break;
+    if(attempt===2)throw problem('음식 DB 갱신 중입니다. 다시 시도해 주세요.',503);
+  }
   for(const row of rows){if(row.deleted)delete base[row.id];else base[row.id]=JSON.parse(row.payload);}
   const mine=uid?(await sql(env,'SELECT id FROM community_foods WHERE owner_hash=? AND deleted=0',await hash(uid)).all()).results.map(r=>r.id):[];
   return {foods:base,mine,commit,pending:rows.length};
@@ -34,8 +41,9 @@ export async function saveCommunity(env,uid,b,now=Date.now()){
   if(old&&old.owner_hash!==owner)throw problem('이미 등록된 음식입니다. 다른 제품이면 제품명을 포함해 주세요.',409);
   // A stable normalized-name id makes retries and simultaneous first submissions safe.
   if(b.id&&await hash(food.name.replace(/\s/g,'').normalize('NFC').toLowerCase())!==id)throw problem('이름을 바꾸려면 새 음식으로 등록해 주세요.');
-  if(!old&&(await sql(env,'SELECT COUNT(*) AS n FROM community_foods WHERE owner_hash=? AND deleted=0',owner).first()).n>=200)throw problem('등록한 음식은 200개까지 관리할 수 있어요.');
-  if(!old&&(await sql(env,'SELECT COUNT(*) AS n FROM community_foods WHERE dirty=1').first()).n>=500)throw problem('음식 DB 저장 중입니다. 잠시 후 등록해 주세요.',503);
+  if((!old||old.deleted)&&(await sql(env,'SELECT COUNT(*) AS n FROM community_foods WHERE owner_hash=? AND deleted=0',owner).first()).n>=200)throw problem('등록한 음식은 200개까지 관리할 수 있어요.');
+  if((!old||old.deleted)&&(await sql(env,'SELECT COUNT(*) AS n FROM community_foods WHERE deleted=0').first()).n>=20000)throw problem('음식 DB 확장이 필요합니다. 지금은 기존 음식만 수정할 수 있어요.',503);
+  if((!old||!old.dirty)&&(await sql(env,'SELECT COUNT(*) AS n FROM community_foods WHERE dirty=1').first()).n>=500)throw problem('음식 DB 저장 중입니다. 잠시 후 등록해 주세요.',503);
   const rev=crypto.randomUUID(),value=publicFood(id,food,rev,now);
   const result=await sql(env,'INSERT INTO community_foods(id,owner_hash,payload,revision,dirty,deleted,updated_at) VALUES(?,?,?,?,1,0,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision,dirty=1,deleted=0,updated_at=excluded.updated_at WHERE community_foods.owner_hash=excluded.owner_hash',id,owner,JSON.stringify(value),rev,now).run();
   if(!result.meta.changes)throw problem('이미 등록된 음식입니다.',409);
