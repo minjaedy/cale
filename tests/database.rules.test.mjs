@@ -1,6 +1,8 @@
 import {before,after,beforeEach,test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
+import assert from 'node:assert/strict';
+import {claimInvite} from '../invite-core.mjs';
 
 let env;
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-tempo',database:{host:'127.0.0.1',port:9000,rules:await readFile('database.rules.json','utf8')}});});
@@ -109,6 +111,56 @@ test('every event completion is independent, persistent and owner-only',async()=
 });
 const client=uid=>env.authenticatedContext(uid,{firebase:{sign_in_provider:'google.com'}}).database();
 const code='a'.repeat(32);
+const inviteStore=db=>({read:async()=>(await db.ref(coachRoot+'/invites/'+code).get()).val(),write:value=>db.ref(coachRoot+'/invites/'+code).set(value)});
+async function freshInvite(){
+  const member=client('alice'),trainer=client('coach');
+  await member.ref(coachRoot+'/profiles/alice').set({role:'member',name:'회원'});
+  await trainer.ref(coachRoot+'/profiles/coach').set({role:'trainer',name:'트레이너'});
+  const invitation={member:'alice',name:'회원',expiresAt:Date.now()+3600000};
+  await member.ref(coachRoot+'/invites/'+code).set(invitation);
+  return {member,trainer,invitation};
+}
+test('a valid invite connects from an empty SDK cache and setup can resume after a claimed invite',async()=>{
+  const {trainer}=await freshInvite();
+  // Reproduce the original false-expiry bug: no listener or read on this client.
+  const values=[];
+  const old=await trainer.ref(coachRoot+'/invites/'+code).transaction(value=>{values.push(value);if(!value)return;return {...value,claimedBy:'coach'};},undefined,false);
+  assert.equal(values[0],null);
+  assert.equal(old.committed,false);
+  const cold=client('coach'),claimed=await claimInvite(inviteStore(cold),'coach');
+  assert.equal(claimed.member,'alice');
+  const link=coachRoot+'/links/alice/coach';
+  await cold.ref(link).set({code,memberName:claimed.name,trainerName:'트레이너',createdAt:Date.now()});
+  const retry=client('coach');
+  await claimInvite(inviteStore(retry),'coach');
+  assert.ok((await retry.ref(link).get()).exists());
+  await retry.ref(coachRoot+'/roster/coach/alice').set(true);
+  await retry.ref(coachRoot+'/invites/'+code).remove();
+  assert.equal((await retry.ref(coachRoot+'/roster/coach/alice').get()).val(),true);
+  await assert.rejects(claimInvite(inviteStore(client('coach')),'coach'),/없는 코드/);
+});
+test('simultaneous trainers can claim an invite only once',async()=>{
+  await freshInvite();const bob=client('bob');
+  await bob.ref(coachRoot+'/profiles/bob').set({role:'trainer',name:'다른 트레이너'});
+  let arrived=0,release;const barrier=new Promise(r=>release=r);
+  const stores=['coach','bob'].map(uid=>{const store=inviteStore(client(uid));return {...store,read:async()=>{const value=await store.read();if(++arrived===2)release();await barrier;return value;}}});
+  const results=await Promise.allSettled(stores.map((s,i)=>claimInvite(s,['coach','bob'][i])));
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.match(results.find(r=>r.status==='rejected').reason.message,/다른 트레이너/);
+});
+test('a revoked invite cannot be recreated between reading and claiming',async()=>{
+  const {member}=await freshInvite(),store=inviteStore(client('coach'));let reads=0;
+  await assert.rejects(claimInvite({...store,read:async()=>{const value=await store.read();if(++reads===1)await member.ref(coachRoot+'/invites/'+code).remove();return value;}},'coach'),/없는 코드/);
+  assert.equal(await inviteStore(member).read(),null);
+});
+test('expired, own and already-used invites return distinct errors',async()=>{
+  const {member,trainer,invitation}=await freshInvite();
+  await assert.rejects(claimInvite(inviteStore(member),'alice'),/본인의/);
+  await claimInvite(inviteStore(trainer),'coach');
+  await assert.rejects(claimInvite(inviteStore(client('bob')),'bob'),/다른 트레이너/);
+  await env.withSecurityRulesDisabled(c=>c.database().ref(coachRoot+'/invites/'+code).set({...invitation,expiresAt:Date.now()-1000}));
+  await assert.rejects(claimInvite(inviteStore(client('coach')),'coach'),/24시간/);
+});
 async function connectedPair(){
   const member=client('alice'),trainer=client('coach');
   await member.ref(coachRoot+'/profiles/alice').set({role:'member',name:'회원'});

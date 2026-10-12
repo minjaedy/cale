@@ -79,3 +79,13 @@ svg.icon{stroke-width:1.9;stroke-linecap:square;stroke-linejoin:miter}
 .demo-panel{border:1px solid #626b78;border-radius:12px;padding:16px;margin-bottom:20px;background:#1c2028}.demo-panel>div:first-child{display:flex;justify-content:space-between;align-items:center;gap:12px}.demo-panel strong{font-size:14px}.demo-panel p{font-size:11px;line-height:1.5;color:#b5bfce;margin:8px 0}.demo-panel a{font-size:12px;color:#e4e9f1}.demo-controls{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.demo-controls button{min-height:44px;border:1px solid #454e5d;border-radius:7px;font-size:12px}.demo-controls button[aria-pressed=true]{background:#e7ebf1;color:#141820;border-color:#e7ebf1}.entry-inner>a.entry-guest{display:block;margin-top:14px;text-decoration:none}
 
 .calendar-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px;color:var(--muted);font-size:11px}.calendar-tools label{display:flex;align-items:center;gap:10px}.calendar-tools input{max-width:155px;min-height:44px;font-size:16px;color:var(--text);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 9px;color-scheme:dark}.day-btn:disabled,.week-day-heading:disabled,.icon-btn:disabled{opacity:.25;cursor:default}
+
+/* Keep the navigation outside the iPhone content scroller, including overscroll. */
+.app-scroll{display:contents}
+@media(max-width:760px){
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  .app{position:fixed;inset:0;display:flex;flex-direction:column;width:100%;height:100%;height:100dvh;max-width:none;margin:0;padding:0;overflow:hidden}
+  .app-scroll{display:block;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:none;-webkit-overflow-scrolling:touch;padding:max(23px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) 28px max(20px,env(safe-area-inset-left));scroll-padding-block:20px}
+  .app-nav{position:relative;inset:auto;flex:0 0 auto;order:2;width:100%;padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+}
+@media(max-width:359px){.app-scroll{padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right))}}
