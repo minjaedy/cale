@@ -17,7 +17,7 @@ export async function queuePush(env,member,message,recipients){
   if(message.createdAt<Date.now()-7*86400000)return;
   await sql(env,"INSERT OR IGNORE INTO deliveries(id,device_id,recipient,member,author,kind,message_id,created_at) SELECT ?||'|'||?||'|'||id,id,uid,?,?,?,?,? FROM devices WHERE uid IN (SELECT value FROM json_each(?))",member,message.id,member,message.authorUid,message.kind,message.id,Date.now(),JSON.stringify(recipients)).run();
 }
-export async function deliver(env,onlyMessage=null,services={database,fetch}){
+export async function deliver(env,onlyMessage=null,services={database,fetch:(...args)=>fetch(...args)}){
   const now=Date.now();
   // Bound the per-invocation queries to the Workers/D1 free-plan budget.
   const jobs=(await sql(env,"SELECT * FROM deliveries WHERE state!='sent' AND state!='skipped' AND attempts<8 AND next_at<=? AND lease_until<? AND (? IS NULL OR message_id=?) ORDER BY created_at LIMIT 3",now,now,onlyMessage,onlyMessage).all()).results;
