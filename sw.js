@@ -24,6 +24,6 @@ self.addEventListener('fetch',event=>{
     event.respondWith(caches.match(event.request).then(cached=>cached||fetch(event.request)));return;
   }
   if(event.request.mode==='navigate'&&url.origin===scope.origin&&url.pathname.startsWith(scope.pathname)){
-    event.respondWith(fetch(event.request).catch(()=>caches.match(new URL('./offline.html',self.registration.scope))));
+    event.respondWith(fetch(event.request,{cache:'no-store'}).catch(()=>caches.match(new URL('./offline.html',self.registration.scope))));
   }
 });

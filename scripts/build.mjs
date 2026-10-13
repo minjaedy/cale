@@ -7,7 +7,7 @@ const html=await readFile('index.html','utf8');
 for(const [,script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(script);
 JSON.parse(await readFile('database.rules.json','utf8'));
 await mkdir('dist',{recursive:true});
-const hash=createHash('sha256');for(const file of files)hash.update((await readFile(file)).toString().replace(/\r\n/g,'\n'));
+const hash=createHash('sha256');for(const file of [...files,'scripts/demo-page.mjs'])hash.update((await readFile(file)).toString().replace(/\r\n/g,'\n'));
 const version=hash.digest('hex').slice(0,16);
 for(const file of files){if(/\.(html|css|js|mjs)$/.test(file))await writeFile('dist/'+file,(await readFile(file,'utf8')).replaceAll('__TEMPO_BUILD__',version).replaceAll('?v=3','?v='+version));else await copyFile(file,'dist/'+file);}
 await writeFile('dist/version.json',JSON.stringify({id:version,version:'1.2.0'})+'\n');

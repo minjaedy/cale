@@ -4,6 +4,5 @@ export function demoHTML(html){
     .replace(/<script src="\.\/firebase-config.js"><\/script>/,'')
     .replace(/<script>if\(location.protocol[\s\S]*?<\/script>/,'')
     .replace(/<script>if\('serviceWorker'[\s\S]*?<\/script>/,'')
-    .replace(/<script type="module" src="\.\/updates.js[^>]*><\/script>/,'')
     .replace('</body>','<script type="module" src="./demo.js?v=3"></script></body>');
 }

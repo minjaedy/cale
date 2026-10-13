@@ -20,6 +20,45 @@ let presenceView='';
 const save=(key,v)=>{try{localStorage.setItem(key,v)}catch{}};
 const get=(key)=>{try{return localStorage.getItem(key)||''}catch{return ''}};
 const draftKey=key=>'tempo-draft:'+ (state.user?.uid||'guest')+':'+key;
+let mealDrafts={},mealContext=null,mealDraftStorageFailed=false;
+const mealSlot=(day,meal)=>day+':'+meal;
+function validMealContext(day,meal){return /^\d{4}-\d{2}-\d{2}$/.test(day)&&day>=cutoffs().before&&day<=date()&&Object.hasOwn(MEALS,meal)}
+function storeMealDrafts(){
+  for(const key of Object.keys(mealDrafts))if(!validMealContext(...key.split(':')))delete mealDrafts[key];
+  try{localStorage.setItem(draftKey('meal-slots'),JSON.stringify(mealDrafts));localStorage.setItem(draftKey('meal-context'),JSON.stringify(mealContext));mealDraftStorageFailed=false}catch{mealDraftStorageFailed=true}
+}
+function saveMealDraft(){
+  if(!mealContext)return;
+  const key=mealSlot(mealContext.date,mealContext.meal),text=$('mealText').value,calories=$('mealCalories').value;
+  if(text.trim()||calories)mealDrafts[key]={text,calories};else delete mealDrafts[key];
+  storeMealDrafts();
+}
+function selectMealContext(day,meal,{saveCurrent=true,legacy=false}={}){
+  if(!validMealContext(day,meal))return false;
+  if(saveCurrent)saveMealDraft();
+  mealContext={date:day,meal};
+  const draft=mealDrafts[mealSlot(day,meal)];
+  $('mealDate').value=day;$('mealType').value=meal;
+  $('mealText').value=draft?.text||(legacy?window.Tempo.snapshot().logs[day]?.[meal]||'':'');
+  $('mealCalories').value=draft?.calories||'';
+  saveMealDraft();previewFood();return true;
+}
+function restoreMealDrafts(){
+  mealDrafts={};mealContext=null;mealDraftStorageFailed=false;
+  try{const saved=JSON.parse(get(draftKey('meal-slots'))||'{}');for(const [key,value] of Object.entries(saved||{}))if(validMealContext(...key.split(':'))&&typeof value?.text==='string'&&typeof value?.calories==='string')mealDrafts[key]={text:value.text.slice(0,300),calories:value.calories.slice(0,10)}}catch{}
+  let context;try{context=JSON.parse(get(draftKey('meal-context')))}catch{}
+  if(!context||!validMealContext(context.date,context.meal))context={date:date(),meal:'breakfast'};
+  const oldText=get(draftKey('meal')),oldCalories=get(draftKey('meal-calories'));
+  if((oldText||oldCalories)&&!mealDrafts[mealSlot(context.date,context.meal)])mealDrafts[mealSlot(context.date,context.meal)]={text:oldText,calories:oldCalories};
+  selectMealContext(context.date,context.meal,{saveCurrent:false});
+  if(!mealDraftStorageFailed){save(draftKey('meal'),'');save(draftKey('meal-calories'),'');}
+}
+export function openMealComposer(day,meal=$('mealType').value){
+  if(!state.user){showEntry();status('식단 등록은 로그인 후 이용');return;}
+  if(state.role==='trainer'||!selectMealContext(day,meal,{legacy:true}))return;
+  window.Tempo.showPage('coaching');
+  $('mealComposer').scrollIntoView({block:'start'});$('mealText').focus({preventScroll:true});
+}
 export function initUI(){
   initAccount((data,role,first)=>actions.profile?.(data,role,first));
   window.TempoAccount={open:()=>{if(!state.user){showEntry();return;}openAccount(state.profile,{role:state.role});},close:closeAccount};
@@ -32,15 +71,27 @@ export function initUI(){
   section.innerHTML=`<div class="page-heading"><div><p class="eyebrow">COACHING</p><h2 id="coachHeading">코칭</h2><p class="desc" id="coachDescription">식단 · 코멘트</p></div></div><div class="trainer-overview" id="trainerOverview" hidden></div><p class="coach-status" id="coachStatus" role="status"></p><div id="coachGuest" class="coach-notice" hidden>로그인 후 이용 가능 <button class="small-btn" data-coach-action="entry">로그인</button></div><div class="roster-tabs" id="rosterTabs" hidden></div><div class="coach-grid"><div class="coach-primary"><div class="coach-panel" id="mealComposer"><h3>식단 등록</h3><form id="mealForm"><div class="field-row"><label class="field">날짜<input id="mealDate" type="date" required></label><label class="field">식사<select id="mealType"><option value="breakfast">아침</option><option value="lunch">점심</option><option value="snack">간식</option><option value="dinner">저녁</option></select></label></div><label class="field">메뉴<textarea id="mealText" maxlength="300" placeholder="예: 현미밥, 닭가슴살, 샐러드" required></textarea></label><button class="btn primary" type="submit" id="mealSend">식단 등록</button><p class="record-note">연결된 트레이너에게 알림</p></form></div><div id="pendingFeed"></div><div class="feed-tools"><h3 id="feedHeading">식단과 코멘트</h3><button id="markRead">모두 읽음</button></div><div id="coachFeed"></div><button class="small-btn" id="loadMore">더 보기</button><p class="record-note" id="feedLimit">최근 100개 · 1년 보관</p></div><aside class="coach-settings"><div class="coach-panel"><details id="connectionDetails"><summary id="connectionTitle">트레이너 연결</summary><div><p id="connectionCopy"></p><div id="memberConnect"><button class="btn" id="makeInvite">초대 코드</button><div id="inviteResult" hidden><code class="invite-code" id="inviteCode"></code><button class="btn" id="copyInvite">코드 복사</button><button class="btn ghost" id="cancelInvite">초대 취소</button><p>24시간 · 1회용<br>연결된 트레이너에게 일정·완료 여부·식단 공유</p></div></div><form id="trainerConnect" hidden><label class="field">초대 코드<input id="inviteInput" type="text" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false" required></label><button class="btn" type="submit">회원 연결</button></form><div id="connections"></div></div></details></div><div class="coach-panel"><details id="deviceDetails"><summary>알림 · 설정</summary><div><p id="pushStatus">아이폰: 홈 화면에 추가 후 알림 허용</p><div class="push-controls"><button class="btn" id="enablePush">알림 켜기</button><button class="btn" id="testPush" hidden>알림 테스트</button><button class="btn ghost" id="disablePush" hidden>알림 끄기</button></div><label class="coach-switch" id="routineSwitch">루틴 시작 알림<input id="routineReminders" type="checkbox" checked></label><p class="record-note" id="routinePushNote">모든 루틴의 시작 시간에 알림</p><div id="passkeySettings" hidden><hr><p>Google 인증 후 등록 · Face ID 또는 기기 암호 사용</p><button class="btn" id="registerPasskey">Face ID 등록</button><div id="passkeyList"></div></div><p class="record-note">입력·전송 완료 후 자동 업데이트</p><button class="small-btn" id="checkUpdate">업데이트 확인</button></div></details></div><div class="coach-panel"><p class="account-name" id="coachAccount"></p><p class="record-note" id="coachOnline"></p><div class="coach-actions account-switch"><button class="btn" data-profile-edit>내 정보</button><button class="btn ghost" id="coachLogout">로그아웃</button></div></div></aside></div>`;
   document.querySelector('main').append(section);
   initTrainerWorkspace();
-  $('mealDate').value=date();$('mealDate').max=date();$('mealDate').min=cutoffs().before;initNutrition();
+  $('mealDate').value=date();$('mealDate').max=date();$('mealDate').min=cutoffs().before;initNutrition();restoreMealDrafts();
   document.querySelectorAll('[data-enter-role]').forEach(b=>b.onclick=()=>choose(b.dataset.enterRole));
   $('entryGuest').onclick=()=>{chosen='member';enter(false)};
   $('entryGoogle').onclick=()=>actions.google?.(chosen);
   $('entryContinue').onclick=()=>actions.continue?.(chosen);
   $('entryPasskey').onclick=()=>actions.passkey?.();
   $('roleSwitch').onclick=()=>window.TempoAccount.open();$('notificationOpen').onclick=()=>{window.Tempo.showPage('coaching');if(state.role==='trainer'){coachView='meals';render()}$('feedHeading').scrollIntoView({block:'start',behavior:'smooth'})};
-  $('mealForm').onsubmit=async ev=>{ev.preventDefault();const text=$('mealText').value.trim();if(!text)return;let nutrition;try{nutrition=mealNutrition()}catch(e){window.Tempo.notify(e.message);return;}const ok=await actions.meal?.({...nutrition,date:$('mealDate').value,meal:$('mealType').value,text});if(ok){$('mealText').value='';resetNutrition();save(draftKey('meal'),'');save(draftKey('meal-calories'),'');}};
-  $('mealText').oninput=()=>save(draftKey('meal'),$('mealText').value);$('mealCalories').addEventListener('input',()=>save(draftKey('meal-calories'),$('mealCalories').value));
+  $('mealForm').onsubmit=async ev=>{
+    ev.preventDefault();const text=$('mealText').value.trim();if(!text)return;
+    let nutrition;try{nutrition=mealNutrition()}catch(e){window.Tempo.notify(e.message);return;}
+    saveMealDraft();const sent={...mealContext,text:$('mealText').value,calories:$('mealCalories').value,uid:state.user?.uid},key=mealSlot(sent.date,sent.meal);
+    const ok=await actions.meal?.({...nutrition,date:sent.date,meal:sent.meal,text});
+    if(ok&&state.user?.uid===sent.uid){
+      const saved=mealDrafts[key];if(saved?.text===sent.text&&saved?.calories===sent.calories)delete mealDrafts[key];
+      if(mealContext.date===sent.date&&mealContext.meal===sent.meal&&$('mealText').value===sent.text&&$('mealCalories').value===sent.calories){$('mealText').value='';resetNutrition();$('mealSend').focus({preventScroll:true});}
+      storeMealDrafts();
+    }
+  };
+  $('mealText').oninput=saveMealDraft;$('mealCalories').addEventListener('input',saveMealDraft);
+  for(const id of ['mealDate','mealType'])$(id).addEventListener('change',()=>{if(!selectMealContext($('mealDate').value,$('mealType').value)){$('mealDate').value=mealContext.date;$('mealType').value=mealContext.meal;previewFood();}});
+  window.addEventListener('tempo-compose-meal',ev=>openMealComposer(ev.detail.date,ev.detail.meal));
   $('trainerConnect').onsubmit=ev=>{ev.preventDefault();actions.connect?.($('inviteInput').value)};
   $('makeInvite').onclick=()=>actions.invite?.();$('cancelInvite').onclick=()=>actions.cancelInvite?.();
   $('copyInvite').onclick=async()=>{try{await navigator.clipboard.writeText($('inviteCode').textContent);window.Tempo.notify('코드 복사 완료')}catch{window.Tempo.notify('코드를 길게 눌러 복사해 주세요.')}};
@@ -49,7 +100,7 @@ export function initUI(){
   $('enablePush').onclick=()=>actions.enablePush?.();$('disablePush').onclick=()=>actions.disablePush?.();$('testPush').onclick=()=>actions.testPush?.();
   $('routineReminders').onchange=()=>actions.reminders?.($('routineReminders').checked);
   $('registerPasskey').onclick=()=>actions.register?.();$('coachLogout').onclick=()=>actions.logout?.();$('checkUpdate').onclick=()=>window.TempoUpdate?.check(true);
-  document.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;if(b.dataset.coachAction==='entry')showEntry();if(b.hasAttribute('data-profile-edit'))window.TempoAccount.open();if(b.hasAttribute('data-connect-open')){$('connectionDetails').open=true;$('connectionDetails').scrollIntoView({block:'center',behavior:'smooth'});$('inviteInput').focus({preventScroll:true});}if(b.dataset.stickerFor){const form=b.closest('form'),current=get(draftKey('sticker:'+b.dataset.stickerFor)),value=current===b.dataset.sticker?'':b.dataset.sticker;save(draftKey('sticker:'+b.dataset.stickerFor),value);form.querySelectorAll('[data-sticker]').forEach(el=>el.setAttribute('aria-pressed',el.dataset.sticker===value));form.querySelector('[data-sticker-status]').textContent=value?STICKERS[value]+' 선택':'이모티콘 선택';}if(b.dataset.revoke)actions.revoke?.(b.dataset.revoke);if(b.dataset.member){selected=b.dataset.member;render();}if(b.dataset.read)actions.read?.(b.dataset.read.split(','));if(b.dataset.deleteMeal)actions.deleteMeal?.(b.dataset.deleteMeal);if(b.dataset.retry)actions.retry?.(b.dataset.retry);if(b.dataset.discard)actions.discard?.(b.dataset.discard);if(b.dataset.removeKey)actions.removeKey?.(b.dataset.removeKey);if(b.dataset.shareMeal){if(!state.user){showEntry();status('식단 등록은 로그인 후 이용');return;}window.Tempo.showPage('coaching');$('mealType').value=b.dataset.shareMeal;$('mealDate').value=b.dataset.date;$('mealText').value=window.Tempo.snapshot().logs[b.dataset.date]?.[b.dataset.shareMeal]||'';previewFood();$('mealText').focus();}});
+  document.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;if(b.dataset.coachAction==='entry')showEntry();if(b.hasAttribute('data-profile-edit'))window.TempoAccount.open();if(b.hasAttribute('data-connect-open')){$('connectionDetails').open=true;$('connectionDetails').scrollIntoView({block:'center',behavior:'smooth'});$('inviteInput').focus({preventScroll:true});}if(b.dataset.stickerFor){const form=b.closest('form'),current=get(draftKey('sticker:'+b.dataset.stickerFor)),value=current===b.dataset.sticker?'':b.dataset.sticker;save(draftKey('sticker:'+b.dataset.stickerFor),value);form.querySelectorAll('[data-sticker]').forEach(el=>el.setAttribute('aria-pressed',el.dataset.sticker===value));form.querySelector('[data-sticker-status]').textContent=value?STICKERS[value]+' 선택':'이모티콘 선택';}if(b.dataset.revoke)actions.revoke?.(b.dataset.revoke);if(b.dataset.member){selected=b.dataset.member;render();}if(b.dataset.read)actions.read?.(b.dataset.read.split(','));if(b.dataset.deleteMeal)actions.deleteMeal?.(b.dataset.deleteMeal);if(b.dataset.retry)actions.retry?.(b.dataset.retry);if(b.dataset.discard)actions.discard?.(b.dataset.discard);if(b.dataset.removeKey)actions.removeKey?.(b.dataset.removeKey);if(b.dataset.shareMeal)openMealComposer(b.dataset.date,b.dataset.shareMeal);});
   $('coachFeed').addEventListener('input',ev=>{if(ev.target.matches('[data-comment-draft]'))save(draftKey('comment:'+ev.target.dataset.commentDraft),ev.target.value)});
   $('coachFeed').addEventListener('pointerdown',ev=>{if(ev.target.closest('[type="submit"]')&&document.activeElement?.matches('[data-comment-draft]'))ev.preventDefault()});
   $('coachFeed').addEventListener('submit',async ev=>{ev.preventDefault();const f=ev.target;if(!f.dataset.commentFor)return;const input=f.querySelector('textarea'),sticker=get(draftKey('sticker:'+f.dataset.commentFor)),text=input.value.trim();if(!text&&!STICKERS[sticker]){input.focus();return;}const ok=await actions.comment?.({member:f.dataset.memberId,mealId:f.dataset.commentFor,date:f.dataset.date,text:text||'TEMPO · '+STICKERS[sticker],...(STICKERS[sticker]?{sticker}:{})});if(ok){save(draftKey('comment:'+f.dataset.commentFor),'');save(draftKey('sticker:'+f.dataset.commentFor),'');input.value='';f.querySelectorAll('[data-sticker]').forEach(el=>el.setAttribute('aria-pressed','false'));f.querySelector('[data-sticker-status]').textContent='이모티콘 선택';feedSignature='';renderFeed()}});
@@ -63,7 +114,7 @@ export function entryBusy(value){$('entry').querySelectorAll('button').forEach(b
 export function showEntry(){closeAccount(true);chosen=null;$('entryAuth').hidden=true;entered=false;$('entry').hidden=false;$('entry').querySelector('.entry-inner').classList.remove('is-entering');$('app').inert=true;$('entryStatus').textContent='계정 선택';window.dispatchEvent(new Event('tempo-entry'));}
 function choose(role){chosen=role;document.querySelectorAll('[data-enter-role]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.enterRole===role));$('entryAuth').hidden=false;$('entryPasskey').hidden=role!=='trainer'||!window.PublicKeyCredential;$('entryContinue').hidden=!state.user||role==='trainer'&&get('tempo-has-passkey:'+state.user.uid)==='true';$('entryStatus').textContent=role==='trainer'?'첫 로그인은 Google 인증':'Google 계정 동기화';}
 export function enter(authenticated=true){entered=true;$('app').inert=accountIsOpen();const role=authenticated?state.role:'member';document.body.dataset.role=role;$('roleLabel').textContent=(state.profile.name||'내 정보')+(role==='trainer'?' · 트레이너':'');window.Tempo.setRole(role);$('addBtn').hidden=role==='trainer';document.querySelectorAll('.app-nav [data-page]').forEach(b=>b.hidden=role==='trainer'&&b.dataset.page!=='coaching');if(role==='trainer'||location.hash.startsWith('#coaching'))window.Tempo.showPage('coaching');else {let page='routine';try{const saved=sessionStorage.getItem('tempo-update-page');if(['routine','records','diet','coaching'].includes(saved))page=saved;sessionStorage.removeItem('tempo-update-page')}catch{}window.Tempo.showPage(page)}const finish=()=>{$('entry').hidden=true;if(!accountIsOpen()&&!document.querySelector('.modal:not([hidden])')){$('app').inert=false;$('roleSwitch').focus({preventScroll:true})}};if(matchMedia('(prefers-reduced-motion: reduce)').matches)finish();else{$('entry').querySelector('.entry-inner').classList.add('is-entering');setTimeout(finish,380)}render();window.dispatchEvent(new Event('tempo-entry'));}
-export function update(next){const changed=next.user!==undefined&&next.user?.uid!==state.user?.uid;state={...state,...next};if(changed){setNutritionAccount(state.user?.uid);closeAccount(true);feedSignature='';rosterSignature='';shownKeys=new Set();baseline=false;selected='all';coachView='schedule';coachDate=date();scheduleState=null;scheduleRequest='';$('mealText').value=get(draftKey('meal'));$('mealCalories').value=get(draftKey('meal-calories'));previewFood();$('inviteResult').hidden=true;loadError='';}render();}
+export function update(next){const changed=next.user!==undefined&&next.user?.uid!==state.user?.uid;if(changed)saveMealDraft();state={...state,...next};if(changed){setNutritionAccount(state.user?.uid);closeAccount(true);feedSignature='';rosterSignature='';shownKeys=new Set();baseline=false;selected='all';coachView='schedule';coachDate=date();scheduleState=null;scheduleRequest='';restoreMealDrafts();$('inviteResult').hidden=true;loadError='';}render();}
 export function invite(code){$('inviteResult').hidden=!code;$('inviteCode').textContent=code||''}
 export function pushState(text,enabled){$('pushStatus').textContent=text;$('testPush').hidden=!enabled;$('disablePush').hidden=!enabled;$('enablePush').hidden=enabled}
 export function keys(list){$('passkeyList').innerHTML=list.length?'<p>'+list.length+'개 등록</p>'+list.map((k,i)=>'<div class="connection-item"><span>패스키 '+(i+1)+' · '+esc(time(k.created_at))+'</span><button data-remove-key="'+esc(k.id)+'">등록 해제</button></div>').join(''):'<p>등록된 패스키 없음</p>'}
@@ -73,7 +124,7 @@ export function registration(role){openAccount({...state.profile,name:state.prof
 export function viewingMember(){return selected==='all'?'*':selected}
 export function viewingMeals(){return state.role!=='trainer'||coachView==='meals'}
 export function openNotification(screen){if(!['routine','coaching'].includes(screen))return;if(state.role==='trainer'&&screen==='coaching'){coachView='meals';render()}location.hash=screen;if(entered)window.Tempo.showPage(state.role==='trainer'?'coaching':screen);}
-export function hasDraft(){return nutritionHasDraft()||accountIsOpen()||!!$('mealCalories').value||!!$('mealText').value.trim()||[...$('coachFeed').querySelectorAll('textarea')].some(el=>el.value.trim())||!!$('coachFeed').querySelector('[data-sticker][aria-pressed="true"]')}
+export function hasDraft(){return mealDraftStorageFailed||nutritionHasDraft()||accountIsOpen()||!!$('mealCalories').value||!!$('mealText').value.trim()||[...$('coachFeed').querySelectorAll('textarea')].some(el=>el.value.trim())||!!$('coachFeed').querySelector('[data-sticker][aria-pressed="true"]')}
 export function setLoadError(message){loadError=message;renderFeed()}
 function incoming(){return Object.entries(state.feeds).flatMap(([member,feed])=>Object.entries(feed||{}).filter(([,v])=>state.role==='trainer'?v.kind==='meal':v.kind==='comment').map(([id,v])=>({id,member,...v}))).sort((a,b)=>b.createdAt-a.createdAt)}
 function render(){

@@ -89,3 +89,5 @@ svg.icon{stroke-width:1.9;stroke-linecap:square;stroke-linejoin:miter}
   .app-nav{position:relative;inset:auto;flex:0 0 auto;order:2;width:100%;padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
 }
 @media(max-width:359px){.app-scroll{padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right))}}
+
+.routine-meal-button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;padding:12px 15px;border-top:1px solid #303640;background:#101318;text-align:left}.routine-meal-button>span{font-size:11px;color:#aab3c1}.routine-meal-button strong{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:650;color:#eef1f5}.routine-meal-button strong span{color:var(--accent);font-size:16px}.routine-meal-button:active:not(:disabled){transform:none;background:#252b35}.routine-meal-button:focus-visible{outline-offset:-3px}

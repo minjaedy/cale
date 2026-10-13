@@ -23,7 +23,7 @@ logs[yesterday]={...logs[yesterday],lunch:'밥 한 공기, 콜라 500ml',complet
 window.Tempo.receiveCloud({events,logs});
 const notice=()=>window.Tempo.notify('체험 모드 · 실제 연결은 본 앱에서');
 window.TempoCloud={state:{status:'local',user:{name:'체험 모드'},message:'이 기기에서만 체험 · 실제 계정과 분리'},pending:false,eventsChanged(){},logChanged(){},login:notice,logout:notice,retry:notice,importLocal:notice};
-window.TempoUpdate={check:()=>window.Tempo.notify('체험판 · 현재 배포 버전')};
+window.TempoCoach={pending:false,get hasDraft(){return ui.hasDraft()}};
 function render(){
   const uid=role==='member'?member:trainer,p=role==='member'?profile:coachProfile;
   ui.update({user:{uid,displayName:p.name},role,profile:p,connected:true,links:linked?(role==='member'?{[trainer]:{trainerName:coachProfile.name}}:{[member]:{memberName:profile.name}}):{},feeds:linked||role==='member'?{[member]:feed}:{},seen,pending:[]});
@@ -47,4 +47,5 @@ ui.setActions({
 const panel=document.createElement('section');panel.className='demo-panel';panel.setAttribute('aria-label','체험 모드');panel.innerHTML='<div><strong>TEMPO 체험</strong><a href="https://minjaedy.github.io/cale/">실제 앱 ↗</a></div><p>실제 계정과 분리 · 새로 열면 초기화</p><div class="demo-controls"><button data-demo-role="member">회원</button><button data-demo-role="trainer">트레이너</button><button id="demoRegistration">처음 등록</button></div><p>알림·Face ID는 실제 앱에서 확인</p>';
 document.querySelector('.app-header').before(panel);
 panel.onclick=ev=>{const b=ev.target.closest('button');if(!b)return;if(b.dataset.demoRole)switchRole(b.dataset.demoRole);if(b.id==='demoRegistration'){role='member';render();ui.registration('member')}};
-render();ui.enter();window.Tempo.showPlan();
+let resumePage=false;try{resumePage=!!sessionStorage.getItem('tempo-update-page')}catch{}
+render();ui.enter();if(!resumePage)window.Tempo.showPlan();
