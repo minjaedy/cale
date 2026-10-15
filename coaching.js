@@ -4,6 +4,7 @@ import {startRegistration,startAuthentication} from './passkey-browser.js?v=3';
 import {legacyProfile,profileInput} from './account-core.mjs?v=3';
 import {claimInvite} from './invite-core.mjs?v=3';
 import {createScheduleWatcher} from './coach-schedule.mjs?v=3';
+import {createBadgeClient} from './badge-client.js?v=3';
 const SERVER='https://tempo-coach.couple-private-push.workers.dev';
 import {cutoffs} from './retention-core.mjs?v=3';
 import {setNutritionFeed,setCommunityFoods,upsertCommunityFood,removeCommunityFood,setNutritionActions} from './nutrition-ui.js?v=3';
@@ -15,13 +16,23 @@ const name=()=>String(profile.name||user?.displayName||user?.email?.split('@')[0
 const requireUser=()=>{if(!user)throw Error('먼저 로그인해 주세요.');};
 const requireOnline=()=>{requireUser();if(!connected)throw Error('인터넷에 연결한 뒤 다시 시도해 주세요.');};
 let scheduleWatcher,requestedSchedule=null,scheduleKey='';
+const appBadge=createBadgeClient();
+let badgeSeenReady=false,badgeLinksReady=false,badgeLinksPending=new Set();
+function syncBadge(){
+  if(!user||!connected||!badgeSeenReady||!badgeLinksReady||badgeLinksPending.size)return;
+  const members=role==='member'?[user.uid]:Object.keys(links);
+  if(members.some(id=>!Object.hasOwn(feeds,id)))return;
+  const unread=members.flatMap(member=>Object.entries(feeds[member]||{}).filter(([id,v])=>!seen[id]&&v.kind===(role==='trainer'?'meal':'comment')&&v.date>=cutoffs().before).map(([id,v])=>({tag:'tempo-'+id,kind:v.kind,at:v.createdAt,member})));
+  void appBadge.sync({uid:user.uid,unread,seen:Object.keys(seen).map(id=>'tempo-'+id),members});
+}
+function visibleBadge(){void appBadge.visible(window.Tempo.currentPage,ui?.isEntered())}
 function syncSchedule(){
   const request=requestedSchedule,allowed=user&&role==='trainer'&&request&&links[request.member]&&/^\d{4}-\d{2}-\d{2}$/.test(request.date)&&request.date>=cutoffs().before;
   const key=allowed?user.uid+':'+request.member+':'+request.date:'';
   if(key===scheduleKey)return;scheduleKey=key;
   if(key)scheduleWatcher.watch(request.member,request.date);else{scheduleWatcher?.clear();ui.schedule(null)}
 }
-function publish(){ui.update({user,role,profile,connected,links,feeds,seen,pending});window.Tempo.setProfile(profile);syncSchedule()}
+function publish(){ui.update({user,role,profile,connected,links,feeds,seen,pending});window.Tempo.setProfile(profile);syncSchedule();syncBadge()}
 async function api(path,data={},authenticated=true){
   const token=authenticated?await auth.currentUser?.getIdToken():null;
   if(authenticated&&!token)throw Error('먼저 로그인해 주세요.');
@@ -30,7 +41,7 @@ async function api(path,data={},authenticated=true){
 }
 const errorText=e=>['NotAllowedError','AbortError'].includes(e?.name)?'인증을 취소했어요. 다시 시도하거나 Google로 입장해 주세요.':e?.code==='auth/popup-closed-by-user'?'로그인 창을 닫았어요.':e?.code==='auth/popup-blocked'?'Safari에서 팝업을 허용한 뒤 다시 눌러 주세요.':e?.code?.includes('permission')||e?.message?.includes('PERMISSION_DENIED')?'연결 권한이 없거나 초대 코드가 만료됐어요.':e?.message||'연결을 확인하고 다시 시도해 주세요.';
 async function action(fn){if(busy)return;busy=true;ui.entryBusy(true);try{return await fn()}catch(e){ui.status(errorText(e));window.Tempo.notify(errorText(e));return false}finally{busy=false;ui.entryBusy(false)}}
-function clearListeners(){scheduleWatcher?.clear();scheduleKey='';ui?.schedule(null);nutritionStop?.();nutritionStop=null;setNutritionFeed({});unsubs.forEach(fn=>fn());unsubs=[];for(const fn of feedSubs.values())fn();for(const fn of linkSubs.values())fn();feedSubs.clear();linkSubs.clear();links={};feeds={};seen={};}
+function clearListeners(){badgeSeenReady=false;badgeLinksReady=false;badgeLinksPending.clear();scheduleWatcher?.clear();scheduleKey='';ui?.schedule(null);nutritionStop?.();nutritionStop=null;setNutritionFeed({});unsubs.forEach(fn=>fn());unsubs=[];for(const fn of feedSubs.values())fn();for(const fn of linkSubs.values())fn();feedSubs.clear();linkSubs.clear();links={};feeds={};seen={};}
 function feed(member){
   if(feedSubs.has(member))return;const mine=generation;let active=true,revision=0;
   const stop=onValue(query(ref(db,'tempo/coaching/feed/'+member),orderByChild('createdAt'),limitToLast(limit)),async s=>{
@@ -44,17 +55,17 @@ function feed(member){
 function connectListeners(){
   clearListeners();if(!user)return;const uid=user.uid,mine=generation;
   unsubs.push(onValue(ref(db,'tempo/coaching/profiles/'+uid),s=>{if(mine===generation){profile=s.val()||{};publish()}}));
-  unsubs.push(onValue(ref(db,'tempo/coaching/seen/'+uid),s=>{if(mine===generation){seen=s.val()||{};publish()}}));
+  unsubs.push(onValue(ref(db,'tempo/coaching/seen/'+uid),s=>{if(mine===generation){seen=s.val()||{};badgeSeenReady=true;publish()}}));
   if(role==='member'){
-    feed(uid);nutritionStop=onValue(query(ref(db,'tempo/coaching/feed/'+uid),orderByChild('date'),startAt(cutoffs().before)),s=>{if(mine===generation)setNutritionFeed(s.val()||{})});unsubs.push(onValue(ref(db,'tempo/coaching/links/'+uid),s=>{if(mine===generation){links=s.val()||{};publish()}}));
+    feed(uid);nutritionStop=onValue(query(ref(db,'tempo/coaching/feed/'+uid),orderByChild('date'),startAt(cutoffs().before)),s=>{if(mine===generation)setNutritionFeed(s.val()||{})});unsubs.push(onValue(ref(db,'tempo/coaching/links/'+uid),s=>{if(mine===generation){links=s.val()||{};badgeLinksReady=true;publish()}}));
   }else{
     unsubs.push(onValue(ref(db,'tempo/coaching/roster/'+uid),s=>{
-      if(mine!==generation)return;const members=Object.keys(s.val()||{});
+      if(mine!==generation)return;const members=Object.keys(s.val()||{});badgeLinksReady=true;badgeLinksPending=new Set(members.filter(id=>badgeLinksPending.has(id)||!linkSubs.has(id)));
       for(const [id,unsub] of linkSubs)if(!members.includes(id)){unsub();linkSubs.delete(id);feedSubs.get(id)?.();feedSubs.delete(id);delete links[id];delete feeds[id];}
       for(const id of members)if(!linkSubs.has(id))linkSubs.set(id,onValue(ref(db,'tempo/coaching/links/'+id+'/'+uid),snap=>{
-        if(mine!==generation)return;
+        if(mine!==generation)return;badgeLinksPending.delete(id);
         if(snap.exists()){links[id]=snap.val();feed(id)}else{feedSubs.get(id)?.();feedSubs.delete(id);delete links[id];delete feeds[id]}publish();
-      },()=>{if(mine===generation){feedSubs.get(id)?.();feedSubs.delete(id);delete links[id];delete feeds[id];publish()}}));publish();
+      },()=>{if(mine===generation){badgeLinksPending.delete(id);feedSubs.get(id)?.();feedSubs.delete(id);delete links[id];delete feeds[id];publish()}}));publish();
     }));
   }
 }
@@ -136,7 +147,7 @@ export async function start(context){
   onValue(ref(db,'.info/connected'),s=>{connected=s.val()===true;publish();if(connected){pending=pending.map(p=>({...p,error:null}));void flush();void syncReminders();}});
   onValue(ref(db,'.info/serverTimeOffset'),s=>offset=s.val()||0);
   onAuthStateChanged(auth,next=>{
-    generation++;sessionReady=false;const mine=generation;clearListeners();user=next;profile={};pending=[];lastRoutine='';inviteCode='';ui.update({user,profile,links:{},feeds:{},seen:{},pending:[]});window.Tempo.setProfile({});
+    generation++;sessionReady=false;const mine=generation;clearListeners();user=next;void appBadge.account(next?.uid||null);profile={};pending=[];lastRoutine='';inviteCode='';ui.update({user,profile,links:{},feeds:{},seen:{},pending:[]});window.Tempo.setProfile({});
     loading=(async()=>{
       if(!user){role='member';publish();ui.showEntry();return;}
       await window.TempoCloud.accountReady(user.uid);if(mine!==generation)return;
@@ -150,11 +161,13 @@ export async function start(context){
       if(mine!==generation)return;void api('/account/ready').catch(()=>{});sessionReady=true;connectListeners();void refreshCommunity();publish();if(!entryIntent&&!ui.hasEntryChoice()){if(profile.registered&&role==='member')ui.enter();else if(profile.role&&!profile.registered)ui.registration(role);}void refreshPush();void flush();void syncReminders();
     })().catch(e=>ui.status(errorText(e)));
   });
-  async function presence(){if(!user)return;const active=connected&&ui.isEntered()&&document.visibilityState==='visible'&&window.Tempo.currentPage==='coaching'&&ui.viewingMeals();try{await api('/presence',{active,member:role==='member'?user.uid:ui.viewingMember()})}catch{}}
+  async function presence(){visibleBadge();if(!user)return;const active=connected&&ui.isEntered()&&document.visibilityState==='visible'&&window.Tempo.currentPage==='coaching'&&ui.viewingMeals();try{await api('/presence',{active,member:role==='member'?user.uid:ui.viewingMember()})}catch{}}
   setInterval(()=>{if(document.visibilityState==='visible')void refreshCommunity()},60000);void refreshCommunity();
   setInterval(()=>{void presence();void flush();void syncReminders()},20000);
   window.addEventListener('tempo-synced',()=>void syncReminders());
   for(const event of ['visibilitychange','tempo-page','tempo-entry','tempo-coach-view'])window.addEventListener(event,()=>{void presence();if(document.visibilityState==='visible'){void refreshPush();void syncReminders()}});
   document.addEventListener('visibilitychange',()=>void presence());
+  navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='tempo-badge-changed')visibleBadge()});
+  navigator.serviceWorker?.addEventListener('controllerchange',visibleBadge);
   window.TempoCoach={get pending(){return pending.length>0||busy},get hasDraft(){return ui.hasDraft()},beforeLogout:async()=>{if(pending.length)throw Error('전송 대기 중인 내용이 있어요.');await disablePush();}};
 }

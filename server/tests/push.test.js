@@ -9,16 +9,17 @@ import {localClock,syncRoutine,scheduleRoutines} from '../reminders.js';
 function sub(){const e=createECDH('prime256v1');e.generateKeys();return {endpoint:'https://web.push.apple.com/test-'+crypto.randomUUID(),keys:{p256dh:e.getPublicKey().toString('base64url'),auth:randomBytes(16).toString('base64url')}};}
 test('push delivery is deduplicated, retries failures, respects unlink and removes expired subscriptions',async()=>{
   const env=environment(),vapid=webpush.generateVAPIDKeys();env.VAPID_PUBLIC_KEY=vapid.publicKey;env.VAPID_PRIVATE_KEY=vapid.privateKey;
+  const payloads=[],generate=webpush.generateRequestDetails;webpush.generateRequestDetails=(subscription,body,options)=>{payloads.push(JSON.parse(body));return generate(subscription,body,options)};
   let sent=0,linked=true,response=201;const services={database:async()=>linked?{createdAt:1}:null,fetch:async()=>{sent++;return new Response(null,{status:response})}};
   try{
     await subscribe(env,'coach',sub());const meal={id:'meal1',kind:'meal',authorUid:'member',createdAt:Date.now()};
-    await queuePush(env,'member',meal,['coach']);await queuePush(env,'member',meal,['coach']);await deliver(env,null,services);await deliver(env,null,services);assert.equal(sent,1);
+    await queuePush(env,'member',meal,['coach']);await queuePush(env,'member',meal,['coach']);await deliver(env,null,services);await deliver(env,null,services);assert.equal(sent,1);assert.equal(payloads[0].recipient,'coach');assert.equal(payloads[0].kind,'meal');assert.equal(payloads[0].tag,'tempo-meal1');assert.equal(typeof payloads[0].createdAt,'number');
     response=503;await queuePush(env,'member',{...meal,id:'meal2'},['coach']);await deliver(env,null,services);assert.equal(sent,2);env.sqlite.exec('UPDATE deliveries SET next_at=0');response=201;await deliver(env,null,services);assert.equal(sent,3);
     linked=false;await queuePush(env,'member',{...meal,id:'meal3'},['coach']);await deliver(env,null,services);assert.equal(sent,3);
     linked=true;response=410;await queuePush(env,'member',{...meal,id:'meal4'},['coach']);await deliver(env,null,services);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM devices').get().n,0);
     assert.equal(validSubscription({...sub(),endpoint:'https://localhost/secret'}),false);assert.equal(validSubscription({...sub(),endpoint:'https://web.push.apple.com.attacker.test/x'}),false);
     env.sqlite.exec('UPDATE deliveries SET created_at=1');await cleanup(env);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM deliveries').get().n,0);
-  }finally{env.sqlite.close()}
+  }finally{webpush.generateRequestDetails=generate;env.sqlite.close()}
 });
 test('meals notify linked trainers; comments notify the member; retry does not rewrite the record',async()=>{
   let store={},writes=0,recipients=[];const services={database:async(_,path,options={})=>{if(path.includes('/links/'))return {coach:{createdAt:1}};if(options.method==='PUT'){writes++;store[path]={...options.body,createdAt:Date.now()};return store[path]}return store[path]||null},queuePush:async(_,member,message,to)=>recipients=to};

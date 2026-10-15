@@ -28,6 +28,14 @@
 
 루틴 시작 알림은 등록된 모든 반복 일정에 적용됩니다. 예약 서버가 매분 확인하므로 약 1분의 오차와 푸시 서비스의 지연이 발생할 수 있습니다. 루틴 수정은 Firebase 저장 후 예약 서버에 반영됩니다. 인터넷 연결이 필요합니다.
 
+## 앱 아이콘 배지
+
+홈 화면·Dock·작업표시줄에 미확인 알림 수를 표시합니다. 아이폰은 iOS 16.4 이상 홈 화면 앱, Mac은 macOS Sonoma 14 이상 Safari의 **Dock에 추가** 또는 지원하는 Chrome·Edge 설치 앱, Windows는 Chrome·Edge 설치 앱에서 사용합니다. OS의 앱 알림·배지 표시 설정도 켜져 있어야 합니다. 브라우저 탭이나 지원하지 않는 환경에서는 기존 앱 안 알림을 사용합니다.
+
+앱이 닫혀 있어도 Service Worker가 푸시 수신 시 숫자를 갱신합니다. 식단·코멘트 읽음 처리와 알림 클릭·닫기는 해당 배지를 지우며, 루틴 화면을 열면 수신한 루틴 알림을 확인 처리합니다. 로그아웃·계정 전환 때 이전 계정의 배지를 지웁니다. 체험판은 실제 앱 배지를 변경하지 않습니다. 배지용으로는 기기에 알림 식별자만 최대 2,000개·365일 보관하며, 본문이나 인증 토큰은 저장하지 않습니다. Firebase/D1에 배지 기록을 추가하지 않습니다.
+
+지원 기준: [WebKit 홈 화면 배지](https://webkit.org/blog/14112/badging-for-home-screen-web-apps/), [Safari 17의 Mac 웹 앱](https://webkit.org/blog/14445/webkit-features-in-safari-17-0/), [Microsoft Edge 배지](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/notifications-badges). OS 아이콘의 실제 표시는 해당 기기에서 확인해야 합니다.
+
 ## 배포 구조
 
 | 역할 | 서비스 |

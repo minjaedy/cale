@@ -42,7 +42,7 @@ export async function deliver(env,onlyMessage=null,services={database,fetch:(...
       const presence=await sql(env,'SELECT * FROM presence WHERE uid=? AND active_until>?',job.recipient,Date.now()).first();
       if(!device||!link||(['meal','comment'].includes(job.kind)&&presence&&(presence.member===job.member||presence.member==='*'))){await sql(env,"UPDATE deliveries SET state='skipped',lease_until=0 WHERE id=?",job.id).run();continue;}
       const title=job.kind==='meal'?'새 식단':job.kind==='comment'?'새 코멘트':job.kind==='routine'?'루틴 시작':'알림 테스트';
-      const payload={title,body:job.kind==='test'?'TEMPO 알림 연결 완료':job.kind==='routine'?job.title:'코칭에서 확인',member:job.member,screen:job.kind==='routine'?'routine':'coaching',tag:'tempo-'+job.message_id};
+      const payload={title,body:job.kind==='test'?'TEMPO 알림 · 앱 아이콘 배지 확인':job.kind==='routine'?job.title:'코칭에서 확인',member:job.member,recipient:job.recipient,kind:job.kind,createdAt:job.created_at,screen:job.kind==='routine'?'routine':'coaching',tag:'tempo-'+job.message_id};
       phase='encrypt';
       const req=webpush.generateRequestDetails(JSON.parse(device.subscription),JSON.stringify(payload),{TTL:86400,vapidDetails:{subject:env.APP_URL,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY}});
       phase='send';
