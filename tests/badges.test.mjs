@@ -55,6 +55,15 @@ test('demo and unrelated pages cannot acknowledge installed-app notifications; e
   const x=fixture();await x.push('tempo-c');for(const url of ['https://minjaedy.github.io/dydy/','https://minjaedy.github.io/cale/demo.html','https://example.com/cale/'])await x.fire('message',{source:{url},data:{type:'tempo-badge-account',uid:null}});assert.equal(x.icons.at(-1),1);
   await x.push('tempo-expired','routine',{createdAt:Date.now()-366*86400000});assert.equal(x.icons.at(-1),1);
 });
+
+test('notification clicks and offline fallbacks cannot target sibling installed apps',async()=>{
+  const x=fixture();let intercepted=0;
+  for(const url of ['https://minjaedy.github.io/dydy/','https://minjaedy.github.io/mixroom/','https://minjaedy.github.io/cale-other/']){
+    await x.fire('notificationclick',{notification:{tag:'foreign',data:{url},close(){}}});
+    await x.fire('fetch',{request:{mode:'navigate',url},respondWith(){intercepted++;}});
+  }
+  assert.equal(x.opened.length,0);assert.equal(intercepted,0);
+});
 test('client sync uses the correct registration, protects hidden/locked screens and excludes demo',async()=>{
   const messages=[],listeners={},location={href:'https://minjaedy.github.io/cale/',pathname:'/cale/'},document={body:{dataset:{}},visibilityState:'visible'};
   const navigator={serviceWorker:{getRegistration:async()=>({scope:location.href,active:{postMessage:m=>messages.push(m)}}),addEventListener:(name,fn)=>listeners[name]=fn}};

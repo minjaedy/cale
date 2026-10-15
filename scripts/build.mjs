@@ -3,6 +3,7 @@ import {mkdir,copyFile,writeFile,readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createHash} from 'node:crypto';
 const files=['demo.js','routine-plan.js','calendar-core.mjs','index.html','styles.css','coaching.css','coaching-ui.js','coaching.js','invite-core.mjs','coach-schedule.mjs','passkey-browser.js','badge-client.js','badge-worker.js','updates.js','firebase-config.js','firebase-sync.js','sync-core.mjs','account-core.mjs','account-ui.js','stickers.js','nutrition-core.mjs','nutrition-ui.js','retention-core.mjs','custom-foods.mjs','food-catalog.json','manifest.webmanifest','icon.svg','icon-180.png','icon-192.png','icon-512.png','icon-1024.png','sw.js','offline.html'];
+files.push('tempo-icon-v3-32.png','tempo-icon-v3-48.png','tempo-icon-v3-180.png','tempo-icon-v3-192.png','tempo-icon-v3-256.png','tempo-icon-v3-512.png','tempo-icon-v3-1024.png','tempo-icon-v3-maskable-180.png','tempo-icon-v3-maskable-512.png','tempo-icon-v3-maskable-1024.png');
 const html=await readFile('index.html','utf8');
 for(const [,script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new vm.Script(script);
 JSON.parse(await readFile('database.rules.json','utf8'));
