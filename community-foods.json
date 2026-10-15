@@ -1,5 +1,16 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-12T10:56:35.249Z",
-  "foods": []
+  "updatedAt": "2026-10-15T05:20:57.525Z",
+  "foods": [
+    {
+      "id": "e2875935dba8a5308c3cc351c4658864a3571875f9481bb9ec89f4bae961450e",
+      "name": "와규타다끼덮밥",
+      "amount": 400,
+      "unit": "g",
+      "calories": 800,
+      "revision": "51581212-7ac3-4c55-9af3-50e59abbba03",
+      "updatedAt": 1792039634558,
+      "source": "community"
+    }
+  ]
 }
